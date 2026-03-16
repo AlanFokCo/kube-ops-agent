@@ -1,0 +1,25 @@
+Kube Ops Agent deployed!
+
+Planning mode: {{ if .Values.workflow.enabled }}Workflow static orchestration{{ else }}LLM self-planning (default){{ end }}
+
+1. Get service address:
+{{- if .Values.ingress.enabled }}
+   Ingress enabled, access via:
+   {{- range .Values.ingress.hosts }}
+   {{- range .paths }}
+   http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}{{ .path }}
+   {{- end }}
+   {{- end }}
+{{- else }}
+   export POD_NAME=$(kubectl get pods -l "app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+   kubectl port-forward $POD_NAME 8080:8080
+   Then visit http://localhost:8080
+{{- end }}
+
+2. Common endpoints:
+   - Health: GET /health
+   - Trigger inspection: POST /trigger
+   - Chat: POST /chat
+
+3. View logs:
+   kubectl logs -l app.kubernetes.io/instance={{ .Release.Name }} -f

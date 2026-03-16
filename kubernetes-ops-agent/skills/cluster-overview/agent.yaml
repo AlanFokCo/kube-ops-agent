@@ -1,0 +1,9 @@
+name: ClusterOverview
+description: Inspect Kubernetes cluster overview - nodes status, namespaces, and basic resource counts
+interval_seconds: 300
+report_section: Cluster Overview
+sub_skills:
+  - sub-skills/namespaces.md
+  - sub-skills/nodes-brief.md
+  - sub-skills/pod-counts.md
+read_only: true

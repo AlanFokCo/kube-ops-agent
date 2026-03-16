@@ -1,0 +1,9 @@
+name: NodeHealth
+description: Inspect Kubernetes node health - Ready status, conditions (MemoryPressure, DiskPressure, PIDPressure), taints, capacity
+interval_seconds: 300
+report_section: Node Health
+sub_skills:
+  - sub-skills/conditions.md
+  - sub-skills/taints.md
+  - sub-skills/resources.md
+read_only: true

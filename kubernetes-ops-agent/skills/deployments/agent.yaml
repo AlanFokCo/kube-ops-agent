@@ -1,0 +1,8 @@
+name: DeploymentsStatus
+description: Inspect Kubernetes deployments - replicas, availability, rollout status
+interval_seconds: 300
+report_section: Deployments
+sub_skills:
+  - sub-skills/unhealthy.md
+  - sub-skills/rollout.md
+read_only: true

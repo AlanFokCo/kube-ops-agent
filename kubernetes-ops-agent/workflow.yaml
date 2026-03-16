@@ -1,0 +1,44 @@
+# Kube Ops Agent workflow configuration (optional)
+# Default: LLM self-planning; use this static orchestration only when --workflow or K8SOPS_WORKFLOW is specified
+# For fixed execution order or reduced LLM calls
+
+assessment: "Full cluster health inspection"
+priority: normal
+reasoning: "Static workflow: infrastructure -> workloads -> resources"
+
+steps:
+  # Step 1: Infrastructure - cluster overview and node health
+  - agents:
+      - ClusterOverview
+      - NodeHealth
+    mode: parallel
+    focus_areas:
+      - infrastructure
+    condition: "Check cluster and node status first"
+
+  # Step 2: Workloads - Pod and Deployment
+  - agents:
+      - PodsHealth
+      - DeploymentsStatus
+    mode: parallel
+    focus_areas:
+      - workloads
+    condition: "Check pod and deployment health"
+
+  # Step 3: Extended resources - GPU and network
+  - agents:
+      - GPUHealth
+      - NetworkHealth
+    mode: parallel
+    focus_areas:
+      - gpu
+      - network
+    condition: "Check GPU and network when applicable"
+
+  # Step 4: Resource usage - depends on prior results
+  - agents:
+      - ClusterResources
+    mode: sequential
+    focus_areas:
+      - resources
+    condition: "Aggregate resource usage after other checks"

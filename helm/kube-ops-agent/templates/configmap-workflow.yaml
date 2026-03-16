@@ -1,0 +1,46 @@
+{{- if and .Values.workflow.enabled (or (eq .Values.workflow.configMap "default") (not .Values.workflow.configMap)) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kube-ops-agent.fullname" . }}-workflow
+  labels:
+    {{- include "kube-ops-agent.labels" . | nindent 4 }}
+data:
+  workflow.yaml: |
+    assessment: "Full cluster health inspection"
+    priority: normal
+    reasoning: "Static workflow: infrastructure -> workloads -> resources"
+
+    steps:
+      - agents:
+          - ClusterOverview
+          - NodeHealth
+        mode: parallel
+        focus_areas:
+          - infrastructure
+        condition: "Check cluster and node status first"
+
+      - agents:
+          - PodsHealth
+          - DeploymentsStatus
+        mode: parallel
+        focus_areas:
+          - workloads
+        condition: "Check pod and deployment health"
+
+      - agents:
+          - GPUHealth
+          - NetworkHealth
+        mode: parallel
+        focus_areas:
+          - gpu
+          - network
+        condition: "Check GPU and network when applicable"
+
+      - agents:
+          - ClusterResources
+        mode: sequential
+        focus_areas:
+          - resources
+        condition: "Aggregate resource usage after other checks"
+{{- end }}

@@ -1,0 +1,14 @@
+.git
+.github
+helm
+*.md
+.gitignore
+.dockerignore
+Dockerfile
+Makefile
+k8sops
+*.test
+coverage.*
+.idea
+.vscode
+.env

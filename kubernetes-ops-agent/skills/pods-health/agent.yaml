@@ -1,0 +1,8 @@
+name: PodsHealth
+description: Inspect pod health across namespaces - Running, Pending, Failed, CrashLoopBackOff
+interval_seconds: 300
+report_section: Pods Health
+sub_skills:
+  - sub-skills/problem-pods.md
+  - sub-skills/restarts.md
+read_only: true

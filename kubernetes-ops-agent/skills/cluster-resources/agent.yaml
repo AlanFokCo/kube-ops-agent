@@ -1,0 +1,9 @@
+name: ClusterResources
+description: Inspect cluster resource usage - CPU/memory usage, resource quotas, limits, PVC, node allocatable
+interval_seconds: 300
+report_section: Cluster Resources
+sub_skills:
+  - sub-skills/usage.md
+  - sub-skills/quotas.md
+  - sub-skills/storage.md
+read_only: true

@@ -1,0 +1,14 @@
+apiVersion: v2
+name: kube-ops-agent
+description: Kubernetes Ops Agent - AI-powered cluster inspection and reporting
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - kubernetes
+  - ai-agent
+  - llm
+  - inspection
+maintainers:
+  - name: kube-ops-agent
+    url: https://github.com/alanfokco/kube-ops-agent

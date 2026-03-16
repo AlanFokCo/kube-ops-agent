@@ -1,0 +1,8 @@
+name: GPUHealth
+description: Inspect GPU health in cluster - nvidia device plugin, GPU capacity/allocatable, GPU pods status
+interval_seconds: 300
+report_section: GPU Health
+sub_skills:
+  - sub-skills/device-plugin.md
+  - sub-skills/gpu-pods.md
+read_only: true

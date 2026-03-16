@@ -1,0 +1,118 @@
+# Kube Ops Agent Helm Chart Values
+
+replicaCount: 1
+
+image:
+  repository: kube-ops-agent
+  tag: "1.0.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+rbac:
+  create: true
+
+podAnnotations: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: kube-ops-agent.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 256Mi
+
+# OpenAI API Key - required, injected via Secret
+# Install: helm install ... --set openai.apiKey=xxx
+# Or create Secret: k8sops-openai-api-key, key: api-key
+openai:
+  # Pass at install: --set openai.apiKey=YOUR_OPENAI_KEY
+  apiKey: ""
+  # When using existing Secret, set secretName and ensure Secret has key matching secretKey
+  existingSecret: ""
+  secretKey: api-key
+  model: gpt-4o-mini
+
+# API auth (optional)
+# When set, /trigger, /chat etc. require Bearer token
+apiAuth:
+  existingSecret: ""
+  secretKey: api-token
+
+# Skills directory: use ConfigMap or empty dir
+# ConfigMap must contain agent subdir structure under skills/
+skills:
+  # Use built-in example skills (for quick trial)
+  useDefaultSkills: true
+  # Or custom ConfigMap
+  configMap: ""
+  # Or mount PVC
+  persistentVolumeClaim: ""
+
+# Report storage
+report:
+  persistentVolumeClaim:
+    create: true
+    storageClass: ""
+    size: 1Gi
+
+# App config
+config:
+  logLevel: INFO
+  checkInterval: 10
+  maxReports: 0
+  simpleMode: false
+  intervalPositiveOnly: false
+
+# Planning mode: default LLM self-planning; when workflow enabled use static orchestration
+# See docs/usage-guide.md
+workflow:
+  # When enabled use workflow.yaml from ConfigMap, else LLM self-planning
+  enabled: false
+  # "default" for built-in workflow; or custom ConfigMap name
+  configMap: ""
+
+# MCP config (optional)
+mcp:
+  configMap: ""
+
+nodeSelector: {}
+
+tolerations: []
+
+affinity: {}

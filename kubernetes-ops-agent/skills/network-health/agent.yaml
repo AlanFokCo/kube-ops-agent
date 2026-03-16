@@ -1,0 +1,9 @@
+name: NetworkHealth
+description: Inspect container network health - CoreDNS, Services, Endpoints, Pod IPs, CNI pods, NetworkPolicies
+interval_seconds: 300
+report_section: Network Health
+sub_skills:
+  - sub-skills/dns.md
+  - sub-skills/cni.md
+  - sub-skills/endpoints.md
+read_only: true

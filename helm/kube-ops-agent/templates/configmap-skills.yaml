@@ -1,0 +1,104 @@
+{{- if .Values.skills.useDefaultSkills }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kube-ops-agent.fullname" . }}-skills
+  labels:
+    {{- include "kube-ops-agent.labels" . | nindent 4 }}
+data:
+  cluster-overview/SKILL.md: |
+    ---
+    agent_name: ClusterOverview
+    name: cluster-overview
+    description: Inspect Kubernetes cluster overview - nodes, namespaces, resource usage
+    interval_seconds: 300
+    report_section: Cluster Overview
+    read_only: true
+    ---
+
+    # Cluster Overview Skill
+
+    Inspect nodes (kubectl get nodes), namespaces (kubectl get namespaces), and pod counts (kubectl get pods -A). Provide a concise Markdown report.
+  pods-health/SKILL.md: |
+    ---
+    agent_name: PodsHealth
+    name: pods-health
+    description: Inspect pod health across namespaces
+    interval_seconds: 300
+    report_section: Pods Health
+    read_only: true
+    ---
+
+    # Pods Health Skill
+
+    Run kubectl get pods -A. Report counts by status. For non-Running pods use kubectl describe. Provide a concise Markdown report.
+  deployments/SKILL.md: |
+    ---
+    agent_name: DeploymentsStatus
+    name: deployments-status
+    description: Inspect Kubernetes deployments
+    interval_seconds: 300
+    report_section: Deployments
+    read_only: true
+    ---
+
+    # Deployments Skill
+
+    Run kubectl get deployments -A. Check DESIRED/AVAILABLE. Provide a concise Markdown report.
+  node-health/SKILL.md: |
+    ---
+    agent_name: NodeHealth
+    name: node-health
+    description: Inspect node health - Ready, MemoryPressure, DiskPressure, PIDPressure
+    interval_seconds: 300
+    report_section: Node Health
+    read_only: true
+    ---
+
+    Check kubectl get nodes, kubectl describe nodes for conditions, kubectl top nodes. Report NotReady and pressure.
+  gpu-health/SKILL.md: |
+    ---
+    agent_name: GPUHealth
+    name: gpu-health
+    description: Inspect GPU - nvidia device plugin, GPU capacity, GPU pods
+    interval_seconds: 300
+    report_section: GPU Health
+    read_only: true
+    ---
+
+    Check nvidia-device-plugin pods, kubectl get nodes (nvidia.com/gpu), GPU pods. Report GPU availability.
+  network-health/SKILL.md: |
+    ---
+    agent_name: NetworkHealth
+    name: network-health
+    description: Inspect network - CoreDNS, CNI, Services, Endpoints
+    interval_seconds: 300
+    report_section: Network Health
+    read_only: true
+    ---
+
+    Check CoreDNS, CNI pods, kubectl get endpoints -A, pods with no IP. Report DNS and network status.
+  cluster-resources/SKILL.md: |
+    ---
+    agent_name: ClusterResources
+    name: cluster-resources
+    description: Inspect resource usage - top nodes/pods, quotas, PVC
+    interval_seconds: 300
+    report_section: Cluster Resources
+    read_only: true
+    ---
+
+    Check kubectl top nodes/pods, resourcequotas, pvc -A. Report usage and Pending PVCs.
+  summary/SKILL.md: |
+    ---
+    agent_name: SummaryAgent
+    name: summary
+    description: Summarize inspection results from worker agents into a unified health report
+    interval_seconds: 0
+    report_section: Summary
+    ---
+
+    # Summary Skill
+
+    Aggregate outputs from worker agents into a single Markdown health report.
+{{- end }}

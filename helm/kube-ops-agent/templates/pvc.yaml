@@ -1,0 +1,17 @@
+{{- if .Values.report.persistentVolumeClaim.create }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "kube-ops-agent.fullname" . }}-report
+  labels:
+    {{- include "kube-ops-agent.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.report.persistentVolumeClaim.storageClass }}
+  storageClassName: {{ .Values.report.persistentVolumeClaim.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.report.persistentVolumeClaim.size }}
+{{- end }}

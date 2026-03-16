@@ -1,0 +1,155 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kube-ops-agent.fullname" . }}
+  labels:
+    {{- include "kube-ops-agent.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "kube-ops-agent.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "kube-ops-agent.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "kube-ops-agent.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --addr
+            - ":8080"
+            - --skills-dir
+            - /app/skills
+            - --report-dir
+            - /app/report
+            - --log-level
+            - {{ .Values.config.logLevel }}
+            - --check-interval
+            - {{ .Values.config.checkInterval | toString }}
+            - --max-reports
+            - {{ .Values.config.maxReports | toString }}
+            {{- if .Values.config.simpleMode }}
+            - --no-intelligent
+            {{- end }}
+            {{- if .Values.config.intervalPositiveOnly }}
+            - --interval-positive-only
+            {{- end }}
+            {{- if and .Values.workflow.enabled (or (eq .Values.workflow.configMap "default") (not .Values.workflow.configMap)) }}
+            - --workflow
+            - /app/config/workflow.yaml
+            {{- else if and .Values.workflow.enabled .Values.workflow.configMap (ne .Values.workflow.configMap "default") }}
+            - --workflow
+            - /app/config/workflow.yaml
+            {{- end }}
+          env:
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.openai.existingSecret | default (printf "%s-openai" (include "kube-ops-agent.fullname" .)) }}
+                  key: {{ .Values.openai.secretKey }}
+            - name: OPENAI_MODEL
+              value: {{ .Values.openai.model | quote }}
+            {{- if and .Values.mcp.configMap .Values.workflow.enabled }}
+            - name: K8SOPS_MCP_CONFIG
+              value: /app/mcp/mcp_servers.yaml
+            {{- else if .Values.mcp.configMap }}
+            - name: K8SOPS_MCP_CONFIG
+              value: /app/config/mcp_servers.yaml
+            {{- end }}
+            {{- if .Values.apiAuth.existingSecret }}
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.apiAuth.existingSecret }}
+                  key: {{ .Values.apiAuth.secretKey }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          volumeMounts:
+            - name: skills
+              mountPath: /app/skills
+              readOnly: true
+            - name: report
+              mountPath: /app/report
+            {{- if .Values.workflow.enabled }}
+            - name: workflow-config
+              mountPath: /app/config
+              readOnly: true
+            {{- end }}
+            {{- if and .Values.mcp.configMap (not .Values.workflow.enabled) }}
+            - name: mcp-config
+              mountPath: /app/config
+              readOnly: true
+            {{- end }}
+            {{- if and .Values.mcp.configMap .Values.workflow.enabled }}
+            - name: mcp-config
+              mountPath: /app/mcp
+              readOnly: true
+            {{- end }}
+      volumes:
+        - name: skills
+          {{- if .Values.skills.configMap }}
+          configMap:
+            name: {{ .Values.skills.configMap }}
+          {{- else if .Values.skills.useDefaultSkills }}
+          configMap:
+            name: {{ include "kube-ops-agent.fullname" . }}-skills
+          {{- else if .Values.skills.persistentVolumeClaim }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.skills.persistentVolumeClaim }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        - name: report
+          {{- if .Values.report.persistentVolumeClaim.create }}
+          persistentVolumeClaim:
+            claimName: {{ include "kube-ops-agent.fullname" . }}-report
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- if .Values.workflow.enabled }}
+        - name: workflow-config
+          configMap:
+            {{- if or (eq .Values.workflow.configMap "default") (not .Values.workflow.configMap) }}
+            name: {{ include "kube-ops-agent.fullname" . }}-workflow
+            {{- else }}
+            name: {{ .Values.workflow.configMap }}
+            {{- end }}
+        {{- end }}
+        {{- if .Values.mcp.configMap }}
+        - name: mcp-config
+          configMap:
+            name: {{ .Values.mcp.configMap }}
+        {{- end }}
