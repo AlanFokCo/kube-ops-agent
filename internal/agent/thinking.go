@@ -173,7 +173,10 @@ Return ONLY a compact JSON object:
 		"task":    task,
 		"context": contextData,
 	}
-	data, _ := json.Marshal(payload)
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal analysis payload: %w", err)
+	}
 
 	msgs := []*message.Msg{
 		message.NewMsg("system", message.RoleSystem, sys),
@@ -225,7 +228,10 @@ Return ONLY a valid JSON object with this shape:
 		"task":    task,
 		"context": contextData,
 	}
-	data, _ := json.Marshal(payload)
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("marshal plan payload: %w", err)
+	}
 
 	msgs := []*message.Msg{
 		message.NewMsg("system", message.RoleSystem, sys),
@@ -391,7 +397,10 @@ Produce a concise, well-structured Markdown report for SREs.`
 		"command_plan":    cmds,
 		"command_results": results,
 	}
-	reportJSON, _ := json.MarshalIndent(reportPayload, "", "  ")
+	reportJSON, err := json.MarshalIndent(reportPayload, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal report payload: %w", err)
+	}
 
 	reportMsgs := []*message.Msg{
 		message.NewMsg("system", message.RoleSystem, reportSys),
