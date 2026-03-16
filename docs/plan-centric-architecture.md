@@ -12,20 +12,8 @@ All inspection execution revolves around **InspectionPlan**:
 - **Execution layer**: Executes by Plan steps in order, agnostic to how it was generated
 - **Summarization layer**: Generates report from Plan execution results
 
-```mermaid
-flowchart LR
-    subgraph PlanCentric["Plan-Centric Architecture"]
-        Planning["Planning (LLM / YAML)"]
-        Plan["InspectionPlan (steps, mode, deps)"]
-        Execution["Execution (Scheduler)"]
-        Executor["Executor.Execute()"]
-        Worker["Worker result set"]
-        Summary["Summary layer"]
-
-        Planning -->|produces| Plan
-        Plan -->|drives| Execution
-        Execution --> Executor --> Worker --> Summary
-    end
+```
+    Planning --> InspectionPlan --> Execution --> Executor --> Worker --> Summary
 ```
 
 ### Planning vs Execution Separation
@@ -105,18 +93,21 @@ The execution layer does not interpret task semantics; it only invokes agents by
 
 Self-driven planning flow based on **ThinkingAgent**:
 
-```mermaid
-flowchart TB
-    A["Orchestrate(ctx, focusAreas)"]
-    B["Collect available_agents (Registry.Specs)"]
-    C["Build contextData: { available_agents, focus_areas }"]
-    D["ThinkAndExecute(ctx, task, contextData)"]
-    E["1. analyze(): Assess task complexity"]
-    F["2. createPlan(): LLM generates JSON plan"]
-    G["3. executeDirect(): RawPlanJSON → Scheduler"]
-
-    A --> B --> C --> D
-    D --> E --> F --> G
+```
+    Orchestrate
+         |
+         v
+    Collect available_agents (Registry.Specs)
+         |
+         v
+    Build contextData (available_agents, focus_areas)
+         |
+         v
+    ThinkAndExecute(ctx, task, contextData)
+         |
+         v
+    1. analyze() --> 2. createPlan() --> 3. executeDirect()
+         (Assess task)      (LLM JSON plan)    (RawPlanJSON -> Scheduler)
 ```
 
 ### OrchestratorAgent (Traditional)
@@ -128,21 +119,16 @@ Single LLM call, directly produces InspectionPlan JSON:
 
 ### Planning Priority (Scheduler)
 
-```mermaid
-flowchart TD
-    A["1. Workflow file specified?"]
-    B["LoadFromFile(workflowPath)"]
-    C["2. SelfDrivenOrchestrator.Orchestrate()"]
-    D["3. OrchestratorAgent.Plan()"]
-    E["4. createFallbackPlan()"]
-    Plan["InspectionPlan"]
-
-    A -->|Yes| B --> Plan
-    A -->|No| C
-    C -->|Success| Plan
-    C -->|Fail| D
-    D -->|Success| Plan
-    D -->|Fail| E --> Plan
+```
+    Workflow file specified?
+         |
+         +-- Yes --> LoadFromFile --> InspectionPlan
+         |
+         +-- No --> SelfDrivenOrchestrator --Success--> InspectionPlan
+                         |
+                         +-- Fail --> OrchestratorAgent --Success--> InspectionPlan
+                                         |
+                                         +-- Fail --> createFallbackPlan --> InspectionPlan
 ```
 
 ---
@@ -151,19 +137,19 @@ flowchart TD
 
 ### Execute by Plan
 
-```mermaid
-flowchart TB
-    A["For each step in plan.Steps"]
-    B["Check depends_on satisfied"]
-    C["Filter skip_agents"]
-    D{"mode?"}
-    E["Execute agents concurrently (MaxConcurrentAgents limit)"]
-    F["Execute agents serially"]
-    G["Write results to results[agentName]"]
-
-    A --> B --> C --> D
-    D -->|parallel| E --> G
-    D -->|sequential| F --> G
+```
+    For each step in plan.Steps
+         |
+         v
+    Check depends_on satisfied
+         |
+         v
+    Filter skip_agents
+         |
+         v
+    mode? --parallel--> Execute concurrent --+
+         |                                    |
+         +--sequential--> Execute serial ----+--> Write results
 ```
 
 ### Execution Context Passing
