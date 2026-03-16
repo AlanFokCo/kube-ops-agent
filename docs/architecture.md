@@ -8,33 +8,46 @@ See [Plan-Centric LLM Self-Driven Architecture](plan-centric-architecture.md) fo
 
 ## System Layers
 
-```mermaid
-flowchart TB
-    subgraph API["HTTP API Layer"]
-        A["/health, /trigger, /chat, /api/reports, /api/operations ..."]
-    end
-
-    subgraph Sched["Scheduler Layer"]
-        B["Timed trigger / Intelligent planning / Simple interval / Plan execution loop"]
-    end
-
-    subgraph Orch["Orchestrator Layer"]
-        C["LLM self-planning or Workflow static orchestration → InspectionPlan"]
-    end
-
-    subgraph Exec["Executor Layer"]
-        D["Execute Worker / Retry / Circuit breaker / Concurrency control"]
-    end
-
-    subgraph Worker["Worker Layer (ReAct / SelfDriven)"]
-        E["kubectl / Skill invocation / LLM reasoning / Read-only constraints"]
-    end
-
-    subgraph Runtime["Runtime Layer"]
-        F["Circuit breaker / Rate limiting / State persistence / Metrics"]
-    end
-
-    API --> Sched --> Orch --> Exec --> Worker --> Runtime
+```
+┌──────────────────────────────────────────────────────┐
+│  HTTP API Layer                                      │
+│  /health, /trigger, /chat, /api/reports, ...         │
+└──────────────────────┬───────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────┐
+│  Scheduler Layer                                     │
+│  Timed trigger / Intelligent planning / Simple       │
+│  interval / Plan execution loop                      │
+└──────────────────────┬───────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────┐
+│  Orchestrator Layer                                  │
+│  LLM self-planning or Workflow static orchestration  │
+│  → InspectionPlan                                    │
+└──────────────────────┬───────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────┐
+│  Executor Layer                                      │
+│  Execute Worker / Retry / Circuit breaker /          │
+│  Concurrency control                                 │
+└──────────────────────┬───────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────┐
+│  Worker Layer (ReAct / SelfDriven)                   │
+│  kubectl / Skill invocation / LLM reasoning /        │
+│  Read-only constraints                               │
+└──────────────────────┬───────────────────────────────┘
+                       │
+                       ▼
+┌──────────────────────────────────────────────────────┐
+│  Runtime Layer                                       │
+│  Circuit breaker / Rate limiting / State persistence │
+│  / Metrics                                           │
+└──────────────────────────────────────────────────────┘
 ```
 
 ## Core Components
@@ -87,24 +100,39 @@ flowchart TB
 
 ## Data Flow
 
-```mermaid
-flowchart TB
-    Skills["Skills directory (skills/)"]
-    Registry["Registry.Specs()"]
-    Scheduler["Scheduler.loop()"]
-    Simple["Simple: runSimpleRound() → Execute due agents concurrently"]
-    Intelligent["Intelligent: runIntelligentRound()"]
-    Plan["Generate InspectionPlan (Workflow / SelfDrivenOrch / Orch / Fallback)"]
-    Execute["Execute by Step (depends_on, mode)"]
-    Executor["Executor.Execute(agentName) × N"]
-    Worker["Worker.Reply() → results"]
-    Summary["Summary.Summarize(results) → Markdown"]
-    Report["Write to report/k8s_health_report_*.md"]
-
-    Skills --> Registry --> Scheduler
-    Scheduler --> Simple
-    Scheduler --> Intelligent
-    Intelligent --> Plan --> Execute --> Executor --> Worker --> Summary --> Report
+```
+Skills directory (skills/)
+          │
+          ▼
+    Registry.Specs()
+          │
+          ▼
+    Scheduler.loop()
+         / \
+        /   \
+       ▼     ▼
+  Simple    Intelligent
+  mode      mode
+  │         │
+  │         ▼
+  │    Generate InspectionPlan
+  │    (Workflow / SelfDrivenOrch / Orch / Fallback)
+  │         │
+  │         ▼
+  │    Execute by Step (depends_on, mode)
+  │         │
+  └────►    │
+            ▼
+      Executor.Execute(agentName) × N
+            │
+            ▼
+      Worker.Reply() → results
+            │
+            ▼
+      Summary.Summarize(results) → Markdown
+            │
+            ▼
+      Write to report/k8s_health_report_*.md
 ```
 
 ## Extension Points
