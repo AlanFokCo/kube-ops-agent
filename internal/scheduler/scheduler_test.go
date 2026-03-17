@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -213,10 +214,13 @@ func TestRunSimpleRound_WithIntervalOverride(t *testing.T) {
 			{Name: "Agent1", IntervalSecond: 300},
 		},
 	}
+	// Mark Agent1 as recently run so it is NOT due during this round
+	now := time.Now()
+	env.State.UpdateAgent("Agent1", &now, true)
 	// Use interval override of 999999 seconds so no agents are due
 	s := NewWithOptions(ModeSimple, reg, nil, env, "", 5*time.Second, 999999, nil, nil, nil, nil)
 	ctx := context.Background()
-	s.runSimpleRound(ctx) // no agents should be due with huge interval
+	s.runSimpleRound(ctx) // no agents should be due with huge interval + recent lastRun
 }
 
 // ---- loop with short interval (runs once then cancel) ----
@@ -263,4 +267,294 @@ func TestRunIntelligentRound_WithWorkflowPath(t *testing.T) {
 	s.workflowPath = "/nonexistent/workflow.yaml"
 	ctx := context.Background()
 	s.runIntelligentRound(ctx) // file not found, falls back to simple
+}
+
+// ---- RunOneRound and runOneRoundSync with a non-nil executor ----
+
+func TestRunOneRound_WithNilModelExecutor(t *testing.T) {
+	env := runtime.NewEnvironment(nil)
+	reg := &mockRegistry{
+		specs: []agent.Spec{{Name: "Agent1", IntervalSecond: 300}},
+	}
+	// NewExecutor with nil model - Execute returns error but doesn't panic
+	exec := agent.NewExecutor(reg, env, nil)
+	s := NewWithOptions(ModeSimple, reg, exec, env, "", 5*time.Second, 0, nil, nil, nil, nil)
+
+	specs := []agent.Spec{{Name: "Agent1"}}
+	done := make(chan struct{})
+	go func() {
+		s.runOneRoundSync(context.Background(), specs)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Error("runOneRoundSync timed out")
+	}
+}
+
+func TestRunOneRound_Async(t *testing.T) {
+	env := runtime.NewEnvironment(nil)
+	reg := &mockRegistry{
+		specs: []agent.Spec{{Name: "Agent1"}},
+	}
+	exec := agent.NewExecutor(reg, env, nil)
+	s := NewWithOptions(ModeSimple, reg, exec, env, "", 5*time.Second, 0, nil, nil, nil, nil)
+
+	// RunOneRound is asynchronous - just ensure it doesn't panic
+	s.RunOneRound([]agent.Spec{{Name: "Agent1"}})
+	// Give the goroutine a moment
+	time.Sleep(100 * time.Millisecond)
+}
+
+func TestRunOneRound_EmptySpecs(t *testing.T) {
+	env := runtime.NewEnvironment(nil)
+	reg := &mockRegistry{}
+	exec := agent.NewExecutor(reg, env, nil)
+	s := NewWithOptions(ModeSimple, reg, exec, env, "", 5*time.Second, 0, nil, nil, nil, nil)
+	// Empty specs - runOneRoundSync should be a no-op
+	s.runOneRoundSync(context.Background(), nil)
+}
+
+// ---- runSimpleRound with agents that ARE due ----
+
+func TestRunSimpleRound_WithDueAgent(t *testing.T) {
+	env := runtime.NewEnvironment(nil)
+	reg := &mockRegistry{
+		specs: []agent.Spec{
+			{Name: "Agent1", IntervalSecond: 1},
+		},
+	}
+	// Mark agent as last-run 2 seconds ago so it IS due (interval=1s)
+	lastRun := time.Now().Add(-2 * time.Second)
+	env.State.UpdateAgent("Agent1", &lastRun, true)
+	exec := agent.NewExecutor(reg, env, nil)
+	s := NewWithOptions(ModeSimple, reg, exec, env, "", 5*time.Second, 0, nil, nil, nil, nil)
+	ctx := context.Background()
+	s.runSimpleRound(ctx) // Agent1 should be due and execute (nil model returns error - ignored)
+}
+
+func TestRunSimpleRound_NeverRun_WithExec(t *testing.T) {
+	env := runtime.NewEnvironment(nil)
+	reg := &mockRegistry{
+		specs: []agent.Spec{
+			{Name: "Agent1", IntervalSecond: 300},
+		},
+	}
+	// Agent never run - so it IS due; exec has nil model so returns error (not panic)
+	exec := agent.NewExecutor(reg, env, nil)
+	s := NewWithOptions(ModeSimple, reg, exec, env, "", 5*time.Second, 0, nil, nil, nil, nil)
+	ctx := context.Background()
+	s.runSimpleRound(ctx)
+}
+
+// ---- runIntelligentRound with a static workflow file ----
+
+func writeTestWorkflow(t *testing.T, content string) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := dir + "/workflow.yaml"
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("writeTestWorkflow: %v", err)
+	}
+	return path
+}
+
+func TestRunIntelligentRound_WithStaticWorkflow(t *testing.T) {
+	workflowYAML := `priority: high
+steps:
+  - mode: parallel
+    agents:
+      - name: Agent1
+        focus_areas: []
+`
+	path := writeTestWorkflow(t, workflowYAML)
+
+	env := runtime.NewEnvironment(nil)
+	reg := &mockRegistry{
+		specs: []agent.Spec{{Name: "Agent1", IntervalSecond: 300}},
+	}
+	// Use non-nil exec with nil model - Execute returns error, does not panic
+	exec := agent.NewExecutor(reg, env, nil)
+	// orchestrator and summary are nil -> falls back to runSimpleRound
+	s := NewWithOptions(ModeIntelligent, reg, exec, env, "", 5*time.Second, 0, nil, nil, nil, nil)
+	s.workflowPath = path
+	s.runIntelligentRound(context.Background())
+}
+
+// ---- GetStatus with running scheduler ----
+
+func TestGetStatus_Running(t *testing.T) {
+	env := runtime.NewEnvironment(nil)
+	reg := &mockRegistry{}
+	s := NewWithOptions(ModeSimple, reg, nil, env, "", 5*time.Second, 0, nil, nil, nil, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.Start(ctx)
+	defer s.Stop()
+
+	status := s.GetStatus()
+	if status["running"] != true {
+		t.Errorf("expected running=true after Start, got %v", status["running"])
+	}
+}
+
+// ---- runIntelligentRound with real plan execution ----
+
+func TestRunIntelligentRound_WithPlan_Parallel(t *testing.T) {
+workflowYAML := `priority: high
+steps:
+  - mode: parallel
+    agents:
+      - name: Agent1
+      - name: Agent2
+`
+path := writeTestWorkflow(t, workflowYAML)
+
+env := runtime.NewEnvironment(nil)
+reg := &mockRegistry{
+specs: []agent.Spec{
+{Name: "Agent1"},
+{Name: "Agent2"},
+},
+}
+exec := agent.NewExecutor(reg, env, nil)
+// Non-nil orchestrator and summary (nil model) to bypass early return
+orch := agent.NewOrchestratorAgent(nil)
+sum := agent.NewSummaryAgent(nil)
+s := NewWithOptions(ModeIntelligent, reg, exec, env, "", 5*time.Second, 0, orch, sum, nil, nil)
+s.workflowPath = path
+s.runIntelligentRound(context.Background())
+}
+
+func TestRunIntelligentRound_WithPlan_Sequential(t *testing.T) {
+workflowYAML := `priority: medium
+steps:
+  - mode: sequential
+    agents:
+      - name: Agent1
+`
+path := writeTestWorkflow(t, workflowYAML)
+
+env := runtime.NewEnvironment(nil)
+reg := &mockRegistry{
+specs: []agent.Spec{{Name: "Agent1"}},
+}
+exec := agent.NewExecutor(reg, env, nil)
+orch := agent.NewOrchestratorAgent(nil)
+sum := agent.NewSummaryAgent(nil)
+s := NewWithOptions(ModeIntelligent, reg, exec, env, "", 5*time.Second, 0, orch, sum, nil, nil)
+s.workflowPath = path
+s.runIntelligentRound(context.Background())
+}
+
+func TestRunIntelligentRound_WithPlan_SkipAgents(t *testing.T) {
+workflowYAML := `priority: low
+skip_agents:
+  - Agent2
+steps:
+  - mode: parallel
+    agents:
+      - name: Agent1
+      - name: Agent2
+`
+path := writeTestWorkflow(t, workflowYAML)
+
+env := runtime.NewEnvironment(nil)
+reg := &mockRegistry{
+specs: []agent.Spec{
+{Name: "Agent1"},
+{Name: "Agent2"},
+},
+}
+exec := agent.NewExecutor(reg, env, nil)
+orch := agent.NewOrchestratorAgent(nil)
+sum := agent.NewSummaryAgent(nil)
+s := NewWithOptions(ModeIntelligent, reg, exec, env, "", 5*time.Second, 0, orch, sum, nil, nil)
+s.workflowPath = path
+s.runIntelligentRound(context.Background())
+}
+
+func TestRunIntelligentRound_FallbackPlan(t *testing.T) {
+env := runtime.NewEnvironment(nil)
+reg := &mockRegistry{
+specs: []agent.Spec{{Name: "Agent1"}},
+}
+exec := agent.NewExecutor(reg, env, nil)
+// Non-nil orchestrator and summary (nil model) - orchestrator.Plan will fail, falls to createFallbackPlan
+orch := agent.NewOrchestratorAgent(nil)
+sum := agent.NewSummaryAgent(nil)
+// No workflowPath, orchestrator with nil model will fail
+s := NewWithOptions(ModeIntelligent, reg, exec, env, "", 5*time.Second, 0, orch, sum, nil, nil)
+s.runIntelligentRound(context.Background())
+}
+
+func TestRunIntelligentRound_WithReport(t *testing.T) {
+workflowYAML := `priority: high
+steps:
+  - mode: parallel
+    agents:
+      - name: Agent1
+`
+path := writeTestWorkflow(t, workflowYAML)
+reportDir := t.TempDir()
+
+env := runtime.NewEnvironment(nil)
+reg := &mockRegistry{
+specs: []agent.Spec{{Name: "Agent1"}},
+}
+exec := agent.NewExecutor(reg, env, nil)
+orch := agent.NewOrchestratorAgent(nil)
+sum := agent.NewSummaryAgent(nil)
+s := NewWithOptions(ModeIntelligent, reg, exec, env, reportDir, 5*time.Second, 0, orch, sum, nil, nil)
+s.workflowPath = path
+s.runIntelligentRound(context.Background())
+}
+
+func TestRunIntelligentRound_WithDependsOn(t *testing.T) {
+workflowYAML := `priority: high
+steps:
+  - mode: parallel
+    agents:
+      - name: Agent1
+  - mode: sequential
+    depends_on:
+      - Agent1
+    agents:
+      - name: Agent2
+`
+path := writeTestWorkflow(t, workflowYAML)
+
+env := runtime.NewEnvironment(nil)
+reg := &mockRegistry{
+specs: []agent.Spec{
+{Name: "Agent1"},
+{Name: "Agent2"},
+},
+}
+exec := agent.NewExecutor(reg, env, nil)
+orch := agent.NewOrchestratorAgent(nil)
+sum := agent.NewSummaryAgent(nil)
+s := NewWithOptions(ModeIntelligent, reg, exec, env, "", 5*time.Second, 0, orch, sum, nil, nil)
+s.workflowPath = path
+// Agent1 won't produce result (nil model), so Agent2 step won't run (depends_on not met)
+s.runIntelligentRound(context.Background())
+}
+
+func TestRunIntelligentRound_EmptyAgentsStep(t *testing.T) {
+workflowYAML := `priority: high
+steps:
+  - mode: parallel
+    agents: []
+`
+path := writeTestWorkflow(t, workflowYAML)
+
+env := runtime.NewEnvironment(nil)
+reg := &mockRegistry{}
+exec := agent.NewExecutor(reg, env, nil)
+orch := agent.NewOrchestratorAgent(nil)
+sum := agent.NewSummaryAgent(nil)
+s := NewWithOptions(ModeIntelligent, reg, exec, env, "", 5*time.Second, 0, orch, sum, nil, nil)
+s.workflowPath = path
+s.runIntelligentRound(context.Background())
 }

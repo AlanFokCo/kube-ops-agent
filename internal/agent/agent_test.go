@@ -1246,3 +1246,211 @@ func TestNewChatModelWithOverride_EmptyModel(t *testing.T) {
 	// May fail due to no API key or empty model - just shouldn't panic
 	_ = err
 }
+
+// ---- buildToolkit ----
+func TestBuildToolkit_NilDSL(t *testing.T) {
+	env := runtimepkg.NewEnvironment(nil)
+	// buildToolkit requires non-nil dsl (it accesses dsl.Toolkit)
+	dsl := &AgentDSL{Name: "test"}
+	tk := buildToolkit(dsl, "/tmp", env, nil)
+	if tk == nil {
+		t.Fatal("expected non-nil toolkit")
+	}
+}
+
+func TestBuildToolkit_WithDSL(t *testing.T) {
+	dsl := &AgentDSL{
+		Name: "test",
+		Toolkit: &ToolkitConfig{
+			UseBuiltins: true,
+			UseMCP:      false,
+		},
+	}
+	env := runtimepkg.NewEnvironment(nil)
+	tk := buildToolkit(dsl, "/tmp", env, nil)
+	if tk == nil {
+		t.Fatal("expected non-nil toolkit")
+	}
+}
+
+func TestBuildToolkit_NoBuiltins(t *testing.T) {
+	dsl := &AgentDSL{
+		Name: "test",
+		Toolkit: &ToolkitConfig{
+			UseBuiltins: false,
+		},
+	}
+	tk := buildToolkit(dsl, "/tmp", nil, nil)
+	if tk == nil {
+		t.Fatal("expected non-nil toolkit")
+	}
+}
+
+// ---- newWorkerReActAgent ----
+func TestNewWorkerReActAgent(t *testing.T) {
+	env := runtimepkg.NewEnvironment(nil)
+	spec := Spec{
+		Name:        "TestAgent",
+		SkillDir:    "/tmp/test-skill",
+		Description: "Test agent",
+	}
+	a := newWorkerReActAgent(spec, nil, env)
+	if a == nil {
+		t.Fatal("expected non-nil ReActAgent")
+	}
+}
+
+func TestNewWorkerReActAgent_WithSubSkills(t *testing.T) {
+	env := runtimepkg.NewEnvironment(nil)
+	spec := Spec{
+		Name:        "TestAgent",
+		SkillDir:    "/tmp/test-skill",
+		Description: "Test agent",
+		SubSkills:   []string{"sub-skill-1", "sub-skill-2"},
+	}
+	a := newWorkerReActAgent(spec, nil, env)
+	if a == nil {
+		t.Fatal("expected non-nil ReActAgent")
+	}
+}
+
+// ---- newSaveReportTool / newRegisterAgentSkillTool ----
+func TestNewSaveReportTool_NoContent(t *testing.T) {
+	tool := newSaveReportTool("/tmp")
+	if tool == nil {
+		t.Fatal("expected non-nil tool")
+	}
+	// Test with missing content arg
+	_, err := tool.Execute(context.Background(), map[string]any{})
+	if err == nil {
+		t.Error("expected error when content is missing")
+	}
+}
+
+func TestNewSaveReportTool_InvalidContent(t *testing.T) {
+	tool := newSaveReportTool("/tmp")
+	_, err := tool.Execute(context.Background(), map[string]any{"content": 42})
+	if err == nil {
+		t.Error("expected error for non-string content")
+	}
+}
+
+func TestNewSaveReportTool_EmptyReportDir(t *testing.T) {
+	tool := newSaveReportTool("")
+	_, err := tool.Execute(context.Background(), map[string]any{"content": "# Report"})
+	if err == nil {
+		t.Error("expected error when reportDir is empty")
+	}
+}
+
+func TestNewSaveReportTool_ValidDir(t *testing.T) {
+	dir := t.TempDir()
+	tool := newSaveReportTool(dir)
+	result, err := tool.Execute(context.Background(), map[string]any{"content": "# Test Report"})
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if result == nil {
+		t.Error("expected non-nil result")
+	}
+}
+
+func TestNewRegisterAgentSkillTool_NoDir(t *testing.T) {
+	tool := newRegisterAgentSkillTool("/nonexistent")
+	if tool == nil {
+		t.Fatal("expected non-nil tool")
+	}
+	// Execute - will try to load SKILL.md from /nonexistent, likely fail
+	_, err := tool.Execute(context.Background(), nil)
+	// Error is expected since directory doesn't exist
+	_ = err
+}
+
+func TestNewRegisterAgentSkillTool_ValidDir(t *testing.T) {
+	dir := t.TempDir()
+	// Create a SKILL.md
+	os.WriteFile(dir+"/SKILL.md", []byte("# Test Skill\n\nContent"), 0644)
+	tool := newRegisterAgentSkillTool(dir)
+	result, err := tool.Execute(context.Background(), nil)
+	if err != nil {
+		t.Logf("skill tool error (may be expected): %v", err)
+	}
+	_ = result
+}
+
+// ---- resolveModel (nil model expected when no API keys) ----
+func TestResolveModel_NilDSL(t *testing.T) {
+	os.Unsetenv("OPENAI_API_KEY")
+	os.Unsetenv("DASHSCOPE_API_KEY")
+	os.Unsetenv("ANTHROPIC_API_KEY")
+	dsl := &AgentDSL{Name: "test"}
+	m := resolveModel(dsl)
+	// Returns nil when no API key or falls through to NewDefaultChatModel
+	_ = m
+}
+
+func TestResolveModel_WithAPIKey(t *testing.T) {
+	dsl := &AgentDSL{
+		Name: "test",
+		Model: &ModelConfig{
+			APIKey: "test-key",
+			Model:  "gpt-4",
+		},
+	}
+	// May fail to create model without valid key - just test it doesn't panic
+	m := resolveModel(dsl)
+	_ = m
+}
+
+// ---- buildSysPrompt ----
+func TestBuildSysPrompt_Basic(t *testing.T) {
+	dsl := &AgentDSL{
+		Name:        "TestAgent",
+		Description: "Checks node health",
+	}
+	prompt := buildSysPrompt(dsl, "/tmp/skills/node-health")
+	if len(prompt) == 0 {
+		t.Error("expected non-empty sys prompt")
+	}
+}
+
+func TestBuildSysPrompt_ReadWrite(t *testing.T) {
+	readWrite := false
+	dsl := &AgentDSL{
+		Name:      "TestAgent",
+		ReadOnly:  &readWrite,
+		SysPrompt: "Custom prompt for testing read-write mode",
+	}
+	prompt := buildSysPrompt(dsl, "/tmp/skills/test")
+	if !strings.Contains(prompt, "Read-write") {
+		t.Error("expected 'Read-write' in non-read-only prompt")
+	}
+}
+
+// ---- AgentPool ----
+func TestAgentPool_Execute_EmptyPool(t *testing.T) {
+	env := runtimepkg.NewEnvironment(nil)
+	reg := &mockRegistryForExec{specs: nil}
+	pool := NewAgentPoolFromRegistry(reg, nil, env)
+	ctx := context.Background()
+	// Execute with empty pool - returns empty map
+	results := pool.Execute(ctx, []string{"Agent1"}, nil)
+	_ = results
+}
+
+// ---- pool.BuildChatAgentFromSkillDir ----
+func TestBuildChatAgentFromSkillDir_NoDir(t *testing.T) {
+	// With non-existent skill dir, should return error
+	_, err := BuildChatAgentFromSkillDir("agent1", "/nonexistent/skill", nil, nil)
+	if err == nil {
+		t.Error("expected error for non-existent skill dir")
+	}
+}
+
+// ---- BuildSummaryAgentFromSkillDir ----
+func TestBuildSummaryAgentFromSkillDir_NoDir(t *testing.T) {
+	_, err := BuildSummaryAgentFromSkillDir("/nonexistent/skill", "/tmp", nil)
+	if err == nil {
+		t.Error("expected error for non-existent skill dir")
+	}
+}
