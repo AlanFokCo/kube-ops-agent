@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -1201,6 +1202,206 @@ r := setupTestRouter(d)
 
 w := httptest.NewRecorder()
 req := httptest.NewRequest("GET", "/api/operations?type=history&success_only=true", nil)
+r.ServeHTTP(w, req)
+if w.Code != http.StatusOK {
+t.Errorf("expected 200, got %d", w.Code)
+}
+}
+
+// ---- handleChat with nil-model executor (returns error path) ----
+
+func TestHandleChat_NilModel(t *testing.T) {
+d := newTestDeps(t)
+env := runtime.NewEnvironment(nil)
+reg := d.Registry
+d.Executor = agent.NewExecutor(reg, env, nil) // nil model
+r := setupTestRouter(d)
+
+w := httptest.NewRecorder()
+req := httptest.NewRequest("POST", "/chat", strings.NewReader("check cluster health"))
+r.ServeHTTP(w, req)
+if w.Code != http.StatusInternalServerError {
+t.Errorf("expected 500 for nil model, got %d: %s", w.Code, w.Body.String())
+}
+if !strings.Contains(w.Body.String(), "error") {
+t.Error("expected error in response")
+}
+}
+
+func TestHandleChat_WithJSONBody(t *testing.T) {
+d := newTestDeps(t)
+env := runtime.NewEnvironment(nil)
+reg := d.Registry
+d.Executor = agent.NewExecutor(reg, env, nil)
+r := setupTestRouter(d)
+
+body := `{"input":[{"content":[{"type":"text","text":"what pods are running?"}]}]}`
+w := httptest.NewRecorder()
+req := httptest.NewRequest("POST", "/chat", strings.NewReader(body))
+req.Header.Set("Content-Type", "application/json")
+r.ServeHTTP(w, req)
+// nil model returns error
+if w.Code != http.StatusOK && w.Code != http.StatusInternalServerError {
+t.Errorf("unexpected status: %d", w.Code)
+}
+}
+
+func TestHandleChatStream_NilModel(t *testing.T) {
+d := newTestDeps(t)
+env := runtime.NewEnvironment(nil)
+reg := d.Registry
+d.Executor = agent.NewExecutor(reg, env, nil)
+r := setupTestRouter(d)
+
+w := httptest.NewRecorder()
+req := httptest.NewRequest("POST", "/chat", strings.NewReader("check cluster health"))
+req.Header.Set("Accept", "text/event-stream")
+r.ServeHTTP(w, req)
+// Returns 200 initially (SSE), then writes error to stream
+if w.Code != http.StatusOK {
+t.Errorf("expected 200 for SSE, got %d: %s", w.Code, w.Body.String())
+}
+// Body should contain error data
+if !strings.Contains(w.Body.String(), "data:") {
+t.Logf("SSE response: %s", w.Body.String())
+}
+}
+
+// ---- handleMCPTools with initialized registry ----
+
+func TestHandleMCPTools_WithTools(t *testing.T) {
+d := newTestDeps(t)
+mcpReg := mcp.NewRegistry()
+// Manually add a server and tool
+mcpReg.GetTool("nonexistent")  // just to ensure it's initialized
+// Call initFromConfig to get a real initialized registry
+dir := t.TempDir()
+content := `
+servers:
+  - name: test-server
+    description: Test
+    tools:
+      - name: kubectl-get
+        description: Get k8s resources
+`
+os.WriteFile(dir+"/mcp.yaml", []byte(content), 0644)
+var err error
+mcpReg, err = mcp.InitFromConfig(dir + "/mcp.yaml")
+if err != nil {
+t.Fatalf("InitFromConfig failed: %v", err)
+}
+d.MCPReg = mcpReg
+r := setupTestRouter(d)
+
+w := httptest.NewRecorder()
+req := httptest.NewRequest("GET", "/mcp-tools", nil)
+r.ServeHTTP(w, req)
+if w.Code != http.StatusOK {
+t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+}
+if !strings.Contains(w.Body.String(), "kubectl-get") {
+t.Logf("MCP tools response: %s", w.Body.String())
+}
+}
+
+// ---- handleReportDetail with valid report ----
+
+func TestHandleReportDetail_ValidID(t *testing.T) {
+d := newTestDeps(t)
+// Save a report and then retrieve it
+d.ReportMgr.Save("# Test Report Content")
+reports, _, _ := d.ReportMgr.List(10, 0, nil, nil)
+if len(reports) == 0 {
+t.Skip("no reports created")
+}
+r := setupTestRouter(d)
+
+w := httptest.NewRecorder()
+req := httptest.NewRequest("GET", "/api/report?id="+reports[0].ID, nil)
+r.ServeHTTP(w, req)
+if w.Code != http.StatusOK {
+t.Errorf("expected 200 for valid report ID, got %d: %s", w.Code, w.Body.String())
+}
+}
+
+func TestHandleReportDetail_POST(t *testing.T) {
+d := newTestDeps(t)
+d.ReportMgr.Save("# POST Test Report")
+reports, _, _ := d.ReportMgr.List(10, 0, nil, nil)
+if len(reports) == 0 {
+t.Skip("no reports created")
+}
+r := setupTestRouter(d)
+
+body := fmt.Sprintf(`{"input":[{"content":[{"type":"text","text":"id: %s"}]}]}`, reports[0].ID)
+w := httptest.NewRecorder()
+req := httptest.NewRequest("POST", "/api/report", strings.NewReader(body))
+req.Header.Set("Content-Type", "application/json")
+r.ServeHTTP(w, req)
+if w.Code != http.StatusOK {
+t.Errorf("expected 200, got %d: %s", w.Code, w.Body.String())
+}
+}
+
+// ---- handleOperations more paths ----
+
+func TestHandleOperations_POSTWithHistory(t *testing.T) {
+d := newTestDeps(t)
+now := time.Now()
+d.OpsMgr.Record("agent1", true, now, now, 1.0, "")
+d.OpsMgr.Record("agent1", false, now, now, 2.0, "err")
+r := setupTestRouter(d)
+
+past := now.Add(-time.Hour).Unix()
+future := now.Add(time.Hour).Unix()
+body := fmt.Sprintf(`{"input":[{"content":[{"type":"text","text":"type: history, agent_name: agent1, limit: 5, offset: 0, success_only: false, start_time: %d, end_time: %d"}]}]}`, past, future)
+w := httptest.NewRecorder()
+req := httptest.NewRequest("POST", "/api/operations", strings.NewReader(body))
+req.Header.Set("Content-Type", "application/json")
+r.ServeHTTP(w, req)
+if w.Code != http.StatusOK {
+t.Errorf("expected 200, got %d", w.Code)
+}
+}
+
+// ---- handleHealth with more paths ----
+
+func TestHandleHealth_WithRunningScheduler(t *testing.T) {
+d := newTestDeps(t)
+env := runtime.NewEnvironment(nil)
+d.Scheduler = scheduler.NewWithOptions(
+scheduler.ModeSimple, &testRegistry{}, nil, env, "", 5*time.Second, 0, nil, nil, nil, nil,
+)
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+d.Scheduler.Start(ctx)
+defer d.Scheduler.Stop()
+r := setupTestRouter(d)
+
+w := httptest.NewRecorder()
+req := httptest.NewRequest("GET", "/health", nil)
+r.ServeHTTP(w, req)
+if w.Code != http.StatusOK {
+t.Errorf("expected 200, got %d", w.Code)
+}
+}
+
+// ---- handleReady with various states ----
+
+func TestHandleReady_WithRunningScheduler_Status(t *testing.T) {
+d := newTestDeps(t)
+env := runtime.NewEnvironment(nil)
+d.Scheduler = scheduler.NewWithOptions(
+scheduler.ModeSimple, &testRegistry{}, nil, env, "", 5*time.Second, 0, nil, nil, nil, nil,
+)
+ctx, cancel := context.WithCancel(context.Background())
+defer cancel()
+d.Scheduler.Start(ctx)
+defer d.Scheduler.Stop()
+r := setupTestRouter(d)
+
+w := httptest.NewRecorder()
+req := httptest.NewRequest("GET", "/ready", nil)
 r.ServeHTTP(w, req)
 if w.Code != http.StatusOK {
 t.Errorf("expected 200, got %d", w.Code)

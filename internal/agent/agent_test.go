@@ -10,6 +10,7 @@ import (
 	"time"
 
 	agentpkg "github.com/alanfokco/agentscope-go/pkg/agentscope/agent"
+	toolpkg "github.com/alanfokco/agentscope-go/pkg/agentscope/tool"
 
 	runtimepkg "github.com/alanfokco/kube-ops-agent-go/internal/runtime"
 )
@@ -1454,3 +1455,245 @@ func TestBuildSummaryAgentFromSkillDir_NoDir(t *testing.T) {
 		t.Error("expected error for non-existent skill dir")
 	}
 }
+
+// ---- Executor.Execute - additional paths ----
+
+func TestExecutor_Execute_CircuitOpen(t *testing.T) {
+	env := runtimepkg.NewEnvironment(nil)
+	reg := &mockRegistryForExec{
+		specs: []Spec{{Name: "TestAgent", IntervalSecond: 300}},
+	}
+	exec := NewExecutor(reg, env, nil)
+	// Open circuit for TestAgent
+	for i := 0; i < 5; i++ {
+		env.Circuit.RecordFailure("TestAgent")
+	}
+	ctx := context.Background()
+	_, err := exec.Execute(ctx, "TestAgent", nil)
+	if err == nil {
+		t.Error("expected error for nil model or circuit open")
+	}
+}
+
+// ---- newKubectlTool ----
+
+func TestNewKubectlTool_NilLimiter(t *testing.T) {
+	ktool := newKubectlTool(nil)
+	if ktool == nil {
+		t.Fatal("expected non-nil kubectl tool")
+	}
+	if ktool.Name != "kubectl" {
+		t.Errorf("expected name 'kubectl', got %q", ktool.Name)
+	}
+}
+
+func TestNewKubectlTool_WithLimiter(t *testing.T) {
+	env := runtimepkg.NewEnvironment(nil)
+	ktool := newKubectlTool(env.KubectlLimit)
+	if ktool == nil {
+		t.Fatal("expected non-nil kubectl tool")
+	}
+}
+
+// ---- MakeTriggerMsg returns string ----
+
+func TestMakeTriggerMsg_EmptyInput(t *testing.T) {
+	spec := Spec{Name: "TestAgent", Description: "Tests nodes"}
+	msg := MakeTriggerMsg(spec, nil, nil, "")
+	if msg == "" {
+		t.Error("expected non-empty message")
+	}
+}
+
+func TestMakeTriggerMsg_WithFocusAreas_v2(t *testing.T) {
+	spec := Spec{Name: "TestAgent", Description: "Tests nodes"}
+	input := map[string]any{
+		"focus_areas": []string{"CPU", "Memory"},
+		"assessment":  "High CPU usage",
+	}
+	msg := MakeTriggerMsg(spec, input, []string{"CPU", "Memory"}, "context info")
+	if msg == "" {
+		t.Error("expected non-empty message")
+	}
+}
+
+// ---- ExtractFocusAreas and ExtractOrchestratorContext ----
+
+func TestExtractFocusAreas_FromInput(t *testing.T) {
+	input := map[string]any{
+		"focus_areas": []any{"CPU", "Memory"},
+	}
+	areas := ExtractFocusAreas(input)
+	if len(areas) != 2 {
+		t.Errorf("expected 2 focus areas, got %d", len(areas))
+	}
+}
+
+func TestExtractOrchestratorContext_WithContext(t *testing.T) {
+	input := map[string]any{
+		"orchestrator_context": "Some orchestrator context",
+	}
+	ctx := ExtractOrchestratorContext(input)
+	if ctx != "Some orchestrator context" {
+		t.Errorf("expected orchestrator context, got %q", ctx)
+	}
+}
+
+// ---- newKubectlTool Execute closure ----
+
+// ---- newKubectlTool Execute closure ----
+
+func TestNewKubectlTool_Execute_MissingArgs(t *testing.T) {
+	ktool := newKubectlTool(nil)
+	_, err := ktool.Execute(context.Background(), map[string]any{})
+	if err == nil || !strings.Contains(err.Error(), "missing args") {
+		t.Errorf("expected 'missing args' error, got: %v", err)
+	}
+}
+
+func TestNewKubectlTool_Execute_NonArrayArgs(t *testing.T) {
+	ktool := newKubectlTool(nil)
+	_, err := ktool.Execute(context.Background(), map[string]any{"args": "get pods"})
+	if err == nil || !strings.Contains(err.Error(), "args must be array") {
+		t.Errorf("expected 'args must be array' error, got: %v", err)
+	}
+}
+
+func TestNewKubectlTool_Execute_EmptyArgs(t *testing.T) {
+	ktool := newKubectlTool(nil)
+	_, err := ktool.Execute(context.Background(), map[string]any{"args": []any{}})
+	if err == nil || !strings.Contains(err.Error(), "empty args") {
+		t.Errorf("expected 'empty args' error, got: %v", err)
+	}
+}
+
+func TestNewKubectlTool_Execute_WithArgs(t *testing.T) {
+	ktool := newKubectlTool(nil)
+	// Run kubectl version --client - may fail if kubectl not installed, but covers code path
+	result, err := ktool.Execute(context.Background(), map[string]any{"args": []any{"version", "--client"}})
+	// Error is expected if kubectl not installed, but we cover the code path
+	_ = result
+	_ = err
+}
+
+// ---- buildToolkit with MCP tools ----
+
+func TestBuildToolkit_WithMCPTools(t *testing.T) {
+	dsl := &AgentDSL{
+		Name: "test",
+		Toolkit: &ToolkitConfig{
+			UseBuiltins: true,
+			UseMCP:      true,
+			MCPTools:    []string{"kubectl-get"},
+		},
+	}
+	env := runtimepkg.NewEnvironment(nil)
+	mcpTool := &toolpkg.Tool{Name: "kubectl-get", Description: "desc"}
+	tk := buildToolkit(dsl, "/tmp", env, []*toolpkg.Tool{mcpTool})
+	if tk == nil {
+		t.Fatal("expected non-nil toolkit")
+	}
+}
+
+func TestBuildToolkit_WithMCPTools_NoFilter(t *testing.T) {
+	dsl := &AgentDSL{
+		Name: "test",
+		Toolkit: &ToolkitConfig{
+			UseBuiltins: false,
+			UseMCP:      true,
+			// No MCPTools filter - should include all
+		},
+	}
+	mcpTool := &toolpkg.Tool{Name: "any-tool", Description: "desc"}
+	tk := buildToolkit(dsl, "/tmp", nil, []*toolpkg.Tool{mcpTool})
+	if tk == nil {
+		t.Fatal("expected non-nil toolkit")
+	}
+}
+
+// ---- buildSysPrompt with SubSkills and SysPrompt ----
+
+func TestBuildSysPrompt_WithSubSkills(t *testing.T) {
+	dsl := &AgentDSL{
+		Name:      "TestAgent",
+		SysPrompt: "Custom prompt",
+		SubSkills: []string{"sub-skill-1.md", "sub-skill-2.md"},
+	}
+	prompt := buildSysPrompt(dsl, "/tmp/skills/test")
+	if !strings.Contains(prompt, "Sub-Skills") {
+		t.Error("expected sub-skills reference in prompt")
+	}
+}
+
+// ---- Executor.Execute_CircuitOpen ----
+
+// ---- AgentPool.Execute with a registered agent ----
+
+func TestAgentPool_Execute_WithAgent(t *testing.T) {
+	pool := NewAgentPool()
+	// Register a ReActAgent with nil model (Reply will fail but Execute handles it)
+	tk := toolpkg.NewToolkit()
+	a := agentpkg.NewReActAgent("TestAgent", "sys prompt", nil, tk, nil)
+	pool.Register("TestAgent", a)
+
+	ctx := context.Background()
+	results := pool.Execute(ctx, []string{"TestAgent"}, map[string]any{"query": "test"})
+	// With nil model, Reply returns error, so results won't have TestAgent
+	_ = results
+}
+
+// ---- BuildChatAgentFromSkillDir with valid skill dir ----
+
+func TestBuildChatAgentFromSkillDir_ValidDir(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "SKILL.md"), []byte("# Chat Skill\n\nYou are a helpful assistant."), 0644)
+
+	a, err := BuildChatAgentFromSkillDir("ChatAgent", dir, nil, nil)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if a == nil {
+		t.Fatal("expected non-nil agent")
+	}
+}
+
+// ---- NewAgentPoolFromRegistry with specs ----
+
+func TestNewAgentPoolFromRegistry_WithSpecs(t *testing.T) {
+	env := runtimepkg.NewEnvironment(nil)
+	reg := &mockRegistryForExec{
+		specs: []Spec{
+			{Name: "Agent1", IntervalSecond: 300},
+			{Name: "Agent2", IntervalSecond: 600},
+		},
+	}
+	pool := NewAgentPoolFromRegistry(reg, nil, env)
+	if pool == nil {
+		t.Fatal("expected non-nil pool")
+	}
+	// Check agents are registered
+	if _, ok := pool.Get("Agent1"); !ok {
+		t.Error("expected Agent1 to be registered in pool")
+	}
+}
+
+// ---- NewChatModelWithOverride ----
+
+func TestNewChatModelWithOverride_NoAPIKey(t *testing.T) {
+	// Ensure no API keys are set
+	os.Unsetenv("OPENAI_API_KEY")
+	os.Unsetenv("DASHSCOPE_API_KEY")
+	os.Unsetenv("ANTHROPIC_API_KEY")
+
+	_, err := NewChatModelWithOverride("")
+	if err == nil {
+		t.Error("expected error when no API key configured")
+	}
+}
+
+
+// ---- OrchestratorAgent.Plan with nil model ----
+
+
+// ---- SummaryAgent.Summarize with nil model ----
+

@@ -1,7 +1,13 @@
 package mcp
 
 import (
+	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
+	exec_pkg "os/exec"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -823,5 +829,291 @@ t.Error("expected to find tool1")
 }
 if tool.Name != "tool1" {
 t.Errorf("expected name 'tool1', got %q", tool.Name)
+}
+}
+
+// ---- HTTPClient with mock HTTP server ----
+
+
+func newMCPTestServer(t *testing.T) *httptest.Server {
+t.Helper()
+mux := http.NewServeMux()
+mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+var req map[string]any
+if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+http.Error(w, err.Error(), 400)
+return
+}
+method, _ := req["method"].(string)
+w.Header().Set("Content-Type", "application/json")
+switch method {
+case "initialize":
+json.NewEncoder(w).Encode(map[string]any{
+"jsonrpc": "2.0",
+"id":      req["id"],
+"result":  map[string]any{"protocolVersion": "2024-11-05"},
+})
+case "notifications/initialized":
+json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0"})
+case "tools/list":
+json.NewEncoder(w).Encode(map[string]any{
+"jsonrpc": "2.0",
+"id":      req["id"],
+"result": map[string]any{
+"tools": []any{
+map[string]any{
+"name":        "kubectl-get",
+"description": "Get k8s resources",
+"inputSchema": map[string]any{"type": "object"},
+},
+},
+},
+})
+case "tools/call":
+json.NewEncoder(w).Encode(map[string]any{
+"jsonrpc": "2.0",
+"id":      req["id"],
+"result": map[string]any{
+"content": []any{
+map[string]any{"type": "text", "text": "pod1 Running"},
+},
+},
+})
+default:
+json.NewEncoder(w).Encode(map[string]any{
+"jsonrpc": "2.0",
+"id":      req["id"],
+"error":   map[string]any{"code": -32601, "message": "method not found"},
+})
+}
+})
+return httptest.NewServer(mux)
+}
+
+func TestHTTPClient_Connect(t *testing.T) {
+srv := newMCPTestServer(t)
+defer srv.Close()
+
+c := NewHTTPClient(ServerConfig{Name: "test", URL: srv.URL})
+err := c.Connect(context.Background())
+if err != nil {
+t.Fatalf("expected no error, got: %v", err)
+}
+tools := c.Tools()
+if len(tools) != 1 {
+t.Errorf("expected 1 tool, got %d", len(tools))
+}
+if tools[0].Name != "kubectl-get" {
+t.Errorf("expected 'kubectl-get', got %q", tools[0].Name)
+}
+}
+
+func TestHTTPClient_Connect_AlreadyConnected(t *testing.T) {
+srv := newMCPTestServer(t)
+defer srv.Close()
+
+c := NewHTTPClient(ServerConfig{Name: "test", URL: srv.URL})
+// First connect
+if err := c.Connect(context.Background()); err != nil {
+t.Fatalf("first connect failed: %v", err)
+}
+// Second connect should be a no-op (already has tools)
+if err := c.Connect(context.Background()); err != nil {
+t.Fatalf("second connect failed: %v", err)
+}
+}
+
+func TestHTTPClient_CallTool(t *testing.T) {
+srv := newMCPTestServer(t)
+defer srv.Close()
+
+c := NewHTTPClient(ServerConfig{Name: "test", URL: srv.URL})
+if err := c.Connect(context.Background()); err != nil {
+t.Fatalf("connect failed: %v", err)
+}
+
+result, err := c.CallTool(context.Background(), "kubectl-get", map[string]any{"resource": "pods"})
+if err != nil {
+t.Fatalf("CallTool failed: %v", err)
+}
+if result == nil {
+t.Fatal("expected non-nil result")
+}
+if result.GetText() == "" {
+t.Error("expected non-empty text result")
+}
+}
+
+func TestHTTPClient_sendNotification(t *testing.T) {
+srv := newMCPTestServer(t)
+defer srv.Close()
+
+c := NewHTTPClient(ServerConfig{Name: "test", URL: srv.URL})
+err := c.sendNotification(context.Background(), "notifications/initialized", nil)
+if err != nil {
+t.Fatalf("sendNotification failed: %v", err)
+}
+}
+
+func TestRuntime_Initialize_WithHTTPServer(t *testing.T) {
+srv := newMCPTestServer(t)
+defer srv.Close()
+
+r := NewRuntime()
+configs := []ServerConfig{
+{Name: "test-server", Enabled: true, URL: srv.URL},
+}
+err := r.Initialize(configs)
+if err != nil {
+t.Fatalf("Initialize failed: %v", err)
+}
+tools := r.GetTools()
+if len(tools) != 1 {
+t.Errorf("expected 1 tool after init, got %d", len(tools))
+}
+}
+
+func TestRuntime_CallTool_WithServer(t *testing.T) {
+srv := newMCPTestServer(t)
+defer srv.Close()
+
+r := NewRuntime()
+configs := []ServerConfig{
+{Name: "test-server", Enabled: true, URL: srv.URL},
+}
+r.Initialize(configs)
+
+result, err := r.CallTool(context.Background(), "kubectl-get", map[string]any{"resource": "pods"})
+if err != nil {
+t.Fatalf("CallTool failed: %v", err)
+}
+if result == nil {
+t.Fatal("expected non-nil result")
+}
+}
+
+func TestRuntime_CallTool_ToolError(t *testing.T) {
+srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+var req map[string]any
+json.NewDecoder(r.Body).Decode(&req)
+method, _ := req["method"].(string)
+w.Header().Set("Content-Type", "application/json")
+switch method {
+case "initialize":
+json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": req["id"], "result": map[string]any{}})
+case "tools/list":
+json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": req["id"], "result": map[string]any{"tools": []any{}}})
+default:
+json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": req["id"], "error": map[string]any{"code": -32000, "message": "tool error"}})
+}
+}))
+defer srv.Close()
+
+r := NewRuntime()
+c := NewHTTPClient(ServerConfig{Name: "s1", URL: srv.URL})
+c.Connect(context.Background())
+r.mu.Lock()
+r.clients["s1"] = c
+r.server["bad-tool"] = "s1"
+r.mu.Unlock()
+
+_, err := r.CallTool(context.Background(), "bad-tool", nil)
+if err == nil {
+t.Error("expected error for tool with error response")
+}
+}
+
+// ---- StdioClient.send and sendNotification (direct internal access) ----
+
+func TestStdioClient_sendNotification_Direct(t *testing.T) {
+c := NewStdioClient(ServerConfig{Name: "test", Command: "echo"})
+
+var buf bytes.Buffer
+c.stdin = bufio.NewWriter(&buf)
+
+err := c.sendNotification("notifications/initialized", nil)
+if err != nil {
+t.Fatalf("sendNotification failed: %v", err)
+}
+written := buf.String()
+if !strings.Contains(written, "notifications/initialized") {
+t.Errorf("expected method in output, got: %q", written)
+}
+}
+
+func TestStdioClient_sendNotification_WithParams(t *testing.T) {
+c := NewStdioClient(ServerConfig{Name: "test", Command: "echo"})
+
+var buf bytes.Buffer
+c.stdin = bufio.NewWriter(&buf)
+
+err := c.sendNotification("test-method", map[string]any{"key": "value"})
+if err != nil {
+t.Fatalf("sendNotification with params failed: %v", err)
+}
+if !strings.Contains(buf.String(), "value") {
+t.Errorf("expected params in output, got: %q", buf.String())
+}
+}
+
+func TestStdioClient_send_Direct(t *testing.T) {
+c := NewStdioClient(ServerConfig{Name: "test", Command: "echo"})
+
+var stdinBuf bytes.Buffer
+c.stdin = bufio.NewWriter(&stdinBuf)
+
+respLine := `{"jsonrpc":"2.0","id":1,"result":{"tools":[]}}` + "\n"
+c.stdout = bufio.NewReader(strings.NewReader(respLine))
+
+req := c.mkRequest("tools/list", nil)
+result, err := c.send(req)
+if err != nil {
+t.Fatalf("send failed: %v", err)
+}
+if result == nil {
+t.Error("expected non-nil result")
+}
+}
+
+func TestStdioClient_send_ErrorResponse(t *testing.T) {
+c := NewStdioClient(ServerConfig{Name: "test", Command: "echo"})
+
+var stdinBuf bytes.Buffer
+c.stdin = bufio.NewWriter(&stdinBuf)
+
+respLine := `{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"method not found"}}` + "\n"
+c.stdout = bufio.NewReader(strings.NewReader(respLine))
+
+req := c.mkRequest("unknown-method", nil)
+_, err := c.send(req)
+if err == nil {
+t.Error("expected error for error response")
+}
+if !strings.Contains(err.Error(), "method not found") {
+t.Errorf("expected 'method not found' error, got: %v", err)
+}
+}
+
+func TestStdioClient_CallTool_WithFakeIO(t *testing.T) {
+c := NewStdioClient(ServerConfig{Name: "test", Command: "echo"})
+
+// Set cmd to a non-nil dummy value so "not connected" check passes
+c.cmd = &exec_pkg.Cmd{}
+
+var stdinBuf bytes.Buffer
+c.stdin = bufio.NewWriter(&stdinBuf)
+
+respLine := `{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"output here"}]}}` + "\n"
+c.stdout = bufio.NewReader(strings.NewReader(respLine))
+
+result, err := c.CallTool(context.Background(), "test-tool", map[string]any{"key": "value"})
+if err != nil {
+t.Fatalf("CallTool failed: %v", err)
+}
+if result == nil {
+t.Fatal("expected non-nil result")
+}
+if result.GetText() == "" {
+t.Error("expected non-empty result text")
 }
 }
