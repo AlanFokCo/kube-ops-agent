@@ -21,10 +21,10 @@ jobs:
         run: go build -v ./...
 
       - name: Test
-        run: go test -v -coverprofile=coverage.out ./...
+        run: go test -coverprofile=coverage.txt ./...
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
-          files: coverage.out
-          fail_ci_if_error: true
+          token: 88d250a7-364f-4f55-af5c-5b00228e8558
+          slug: alanfokco/kube-ops-agent
