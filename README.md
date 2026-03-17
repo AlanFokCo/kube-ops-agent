@@ -1,6 +1,7 @@
 # Kube Ops Agent
 
 [![CI](https://github.com/alanfokco/kube-ops-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/alanfokco/kube-ops-agent/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/alanfokco/kube-ops-agent/branch/main/graph/badge.svg)](https://codecov.io/gh/alanfokco/kube-ops-agent)
 
 AI Agent-based Kubernetes cluster inspection, health reporting, and intelligent Q&A. Supports multi-agent collaboration, **LLM self-planning**, scheduled inspection, MCP integration, and HTTP API for cluster state queries and conversational ops.
 
