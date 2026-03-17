@@ -21,19 +21,26 @@ Before inspection runs, the system must decide "which agents to call" and "in wh
 | **LLM Self-Planning** | Default (no workflow specified) | SelfDrivenOrchestrator / OrchestratorAgent | Flexible, adapts to task changes |
 | **Workflow Static Orchestration** | Explicit `--workflow` or `K8SOPS_WORKFLOW` | Predefined YAML file | Fixed flow, fewer LLM calls |
 
-```mermaid
-flowchart TD
-    Decision["Planning Mode Decision"]
-    Workflow["Workflow Static: Read YAML plan"]
-    LLM["LLM Self-Planning: SelfDrivenOrchestrator or OrchestratorAgent"]
-    Plan["InspectionPlan (steps, mode, deps)"]
-    Scheduler["Scheduler executes by steps"]
-
-    Decision -->|"--workflow specified"| Workflow
-    Decision -->|"Not specified"| LLM
-    Workflow --> Plan
-    LLM --> Plan
-    Plan --> Scheduler
+```
+              Planning Mode Decision
+                     │
+          ┌──────────┴──────────┐
+          │                     │
+          ▼                     ▼
+  --workflow specified     Not specified
+          │                     │
+          ▼                     ▼
+  Workflow Static:        LLM Self-Planning:
+  Read YAML plan          SelfDrivenOrchestrator
+                          or OrchestratorAgent
+          │                     │
+          └──────────┬──────────┘
+                     │
+                     ▼
+        InspectionPlan (steps, mode, deps)
+                     │
+                     ▼
+        Scheduler executes by steps
 ```
 
 ---

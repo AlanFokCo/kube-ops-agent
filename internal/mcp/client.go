@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"time"
 )
@@ -41,14 +42,7 @@ func (r *ToolResult) GetText() string {
 			}
 		}
 	}
-	if len(texts) == 0 {
-		return ""
-	}
-	result := texts[0]
-	for i := 1; i < len(texts); i++ {
-		result += "\n" + texts[i]
-	}
-	return result
+	return strings.Join(texts, "\n")
 }
 
 // StdioClient communicates with MCP server via stdio.
@@ -166,9 +160,16 @@ func (c *StdioClient) sendNotification(method string, params any) error {
 	if params != nil {
 		req["params"] = params
 	}
-	data, _ := json.Marshal(req)
-	c.stdin.Write(data)
-	c.stdin.WriteByte('\n')
+	data, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
+	if _, err := c.stdin.Write(data); err != nil {
+		return err
+	}
+	if err := c.stdin.WriteByte('\n'); err != nil {
+		return err
+	}
 	return c.stdin.Flush()
 }
 
@@ -319,7 +320,10 @@ func (c *HTTPClient) sendNotification(ctx context.Context, method string, params
 	if params != nil {
 		req["params"] = params
 	}
-	data, _ := json.Marshal(req)
+	data, err := json.Marshal(req)
+	if err != nil {
+		return err
+	}
 	hr, err := http.NewRequestWithContext(ctx, "POST", c.url, bytes.NewReader(data))
 	if err != nil {
 		return err

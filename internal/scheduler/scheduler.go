@@ -211,12 +211,18 @@ func (s *Scheduler) RunOneRound(specs []agent.Spec) {
 
 func (s *Scheduler) runOneRoundSync(ctx context.Context, specs []agent.Spec) {
 	now := time.Now()
+	var wg sync.WaitGroup
 	for _, sp := range specs {
-		_, _ = s.exec.Execute(ctx, sp.Name, map[string]any{
-			"trigger":   "manual_http",
-			"timestamp": now.Unix(),
-		})
+		wg.Add(1)
+		go func(spec agent.Spec) {
+			defer wg.Done()
+			_, _ = s.exec.Execute(ctx, spec.Name, map[string]any{
+				"trigger":   "manual_http",
+				"timestamp": now.Unix(),
+			})
+		}(sp)
 	}
+	wg.Wait()
 	if s.env.State != nil && s.env.State.IsDirty() {
 		_ = s.env.State.Save()
 	}

@@ -116,7 +116,7 @@ func (e *Executor) Execute(ctx context.Context, name string, input map[string]an
 
 	duration := time.Since(start).Seconds()
 	now := time.Now()
-	startedAt := now.Add(-time.Duration(duration * float64(time.Second)))
+	startedAt := start
 	err := execErr
 
 	if err != nil {
