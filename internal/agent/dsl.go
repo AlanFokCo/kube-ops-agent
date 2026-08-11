@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/agent"
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/model"
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/tool"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/agent"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/model"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/tool"
 
 	"gopkg.in/yaml.v3"
 
@@ -117,7 +117,7 @@ Execute your report plan to produce comprehensive findings.
 `
 
 // AgentBuilder builds ReActAgent from AgentDSL and skillDir.
-func AgentBuilder(dsl *AgentDSL, skillDir string, env *runtimepkg.Environment, mcpTools []*tool.Tool) (*agent.ReActAgent, error) {
+func AgentBuilder(dsl *AgentDSL, skillDir string, env *runtimepkg.Environment, mcpTools []tool.Tool) (*agent.ReActAgent, error) {
 	m := resolveModel(dsl)
 	if m == nil {
 		return nil, fmt.Errorf("no chat model available for agent %s", dsl.Name)
@@ -189,8 +189,8 @@ func resolveModel(dsl *AgentDSL) model.ChatModel {
 	return nil
 }
 
-func buildToolkit(dsl *AgentDSL, skillDir string, env *runtimepkg.Environment, mcpTools []*tool.Tool) *tool.Toolkit {
-	var tools []*tool.Tool
+func buildToolkit(dsl *AgentDSL, skillDir string, env *runtimepkg.Environment, mcpTools []tool.Tool) *tool.Toolkit {
+	var tools []tool.Tool
 	var limiter *runtimepkg.RateLimiter
 	if env != nil {
 		limiter = env.KubectlLimit
@@ -211,7 +211,7 @@ func buildToolkit(dsl *AgentDSL, skillDir string, env *runtimepkg.Environment, m
 			filter[n] = true
 		}
 		for _, t := range mcpTools {
-			if len(filter) == 0 || filter[t.Name] {
+			if len(filter) == 0 || filter[t.Name()] {
 				tools = append(tools, t)
 			}
 		}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/model"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/model"
 )
 
 // SelfDrivenOrchestrator is a self-driven Orchestrator based on ThinkingAgent.

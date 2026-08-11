@@ -4,10 +4,10 @@ import (
 	"context"
 	"sync"
 
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/agent"
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/message"
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/model"
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/tool"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/agent"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/message"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/model"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/tool"
 
 	runtimepkg "github.com/alanfokco/kube-ops-agent-go/internal/runtime"
 )
@@ -74,12 +74,12 @@ func BuildChatAgent(name, sysPrompt string, m model.ChatModel, tk *tool.Toolkit)
 }
 
 // BuildChatAgentFromSkillDir builds Chat Agent from skill dir.
-func BuildChatAgentFromSkillDir(name, skillDir string, m model.ChatModel, extraTools []*tool.Tool) (*agent.ReActAgent, error) {
+func BuildChatAgentFromSkillDir(name, skillDir string, m model.ChatModel, extraTools []tool.Tool) (*agent.ReActAgent, error) {
 	skillContent, err := RegisterAgentSkill(skillDir)
 	if err != nil {
 		return nil, err
 	}
-	tools := []*tool.Tool{tool.ExecuteShellCommandTool(), tool.ViewTextFileTool()}
+	tools := []tool.Tool{tool.ExecuteShellCommandTool(), tool.ViewTextFileTool()}
 	tools = append(tools, extraTools...)
 	tk := tool.NewToolkit(tools...)
 	sysPrompt := skillContent

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/agent"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/agent"
 )
 
 // CachedAgent holds cached Agent instance and metadata.

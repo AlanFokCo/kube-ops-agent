@@ -439,8 +439,8 @@ result := r.CreateMCPToolFunction(tool)
 if result == nil {
 t.Fatal("expected non-nil result")
 }
-if result.Name != "test" {
-t.Errorf("expected name 'test', got %q", result.Name)
+if result.Name() != "test" {
+t.Errorf("expected name 'test', got %q", result.Name())
 }
 // Execute should return error since runtime is not initialized
 _, err := result.Execute(context.Background(), nil)
@@ -462,8 +462,8 @@ result := CreateMCPToolFunction(tool)
 if result == nil {
 t.Fatal("expected non-nil result")
 }
-if result.Name != "static-tool" {
-t.Errorf("expected 'static-tool', got %q", result.Name)
+if result.Name() != "static-tool" {
+t.Errorf("expected 'static-tool', got %q", result.Name())
 }
 // Execute should return error since runtime is static (no runtime)
 _, err := result.Execute(context.Background(), nil)
@@ -642,8 +642,8 @@ if result == nil {
 t.Fatal("expected non-nil result")
 }
 // Description should default to "MCP tool: no-desc"
-if !strings.Contains(result.Description, "no-desc") {
-t.Errorf("expected tool name in description, got %q", result.Description)
+if !strings.Contains(result.Description(), "no-desc") {
+t.Errorf("expected tool name in description, got %q", result.Description())
 }
 }
 

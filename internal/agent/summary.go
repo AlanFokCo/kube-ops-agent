@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/message"
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/model"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/message"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/model"
 
 	"github.com/alanfokco/kube-ops-agent-go/internal/plan"
 )
@@ -60,13 +60,13 @@ Return ONLY Markdown, no JSON.`
 	if err != nil {
 		return "", err
 	}
-	if resp == nil || resp.Msg == nil {
+	if resp == nil {
 		return "", fmt.Errorf("summary agent returned nil response")
 	}
-	text := resp.Msg.GetTextContent("")
-	if text == nil {
+	textStr := resp.GetTextContent()
+	if textStr == "" {
 		return "", fmt.Errorf("summary agent returned empty content")
 	}
-	return *text, nil
+	return textStr, nil
 }
 

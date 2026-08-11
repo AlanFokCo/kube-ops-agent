@@ -10,10 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/agent"
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/message"
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/model"
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/tool"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/agent"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/message"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/model"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/tool"
 
 	"github.com/alanfokco/kube-ops-agent-go/internal/env"
 	"github.com/alanfokco/kube-ops-agent-go/internal/logging"
@@ -185,20 +185,20 @@ func (e *Executor) ExecuteChatStream(ctx context.Context, question string, onChu
 		}
 		return nil, err
 	}
-	defer stream.Close()
 	var fullText strings.Builder
-	for {
-		chunk, err := stream.Recv()
-		if err != nil {
+	for chunk := range stream {
+		if chunk.Error != nil {
 			break
 		}
-		if chunk != nil {
-			if p := chunk.GetTextContent(""); p != nil && *p != "" {
-				fullText.WriteString(*p)
-				if onChunk != nil && onChunk(*p) != nil {
-					break
-				}
+		text := chunk.GetTextContent()
+		if text != "" {
+			fullText.WriteString(text)
+			if onChunk != nil && onChunk(text) != nil {
+				break
 			}
+		}
+		if chunk.IsLast {
+			break
 		}
 	}
 	return message.NewMsg("K8sChatAgent", message.RoleAssistant, fullText.String()), nil
@@ -261,11 +261,8 @@ func (e *Executor) executeSelfDrivenWorker(
 }
 
 // newKubectlTool builds read-only kubectl tool with rate limiting.
-func newKubectlTool(limiter *runtimepkg.RateLimiter) *tool.Tool {
-	return &tool.Tool{
-		Name:        "kubectl",
-		Description: "Run a read-only kubectl command. Args: {\"args\": [\"get\", \"pods\", \"-A\"]}",
-		Execute: func(ctx context.Context, args map[string]any) (any, error) {
+func newKubectlTool(limiter *runtimepkg.RateLimiter) tool.Tool {
+	return newRawTool("kubectl", `Run a read-only kubectl command. Args: {"args": ["get", "pods", "-A"]}`, func(ctx context.Context, args map[string]any) (any, error) {
 			if limiter != nil {
 				if err := limiter.Wait(ctx, 1); err != nil {
 					return nil, err
@@ -298,8 +295,7 @@ func newKubectlTool(limiter *runtimepkg.RateLimiter) *tool.Tool {
 				res["error"] = err.Error()
 			}
 			return res, nil
-		},
-	}
+	})
 }
 
 // newWorkerToolkit builds Worker Toolkit: kubectl + agentscope-go v1.0.1 built-in execute_shell_command / view_text_file.
@@ -315,7 +311,7 @@ func newWorkerToolkit(limiter *runtimepkg.RateLimiter) *tool.Toolkit {
 func buildWorkerAgent(spec Spec, m model.ChatModel, env *runtimepkg.Environment) *agent.ReActAgent {
 	dsl, err := LoadAgentDSL(spec.SkillDir)
 	if err == nil && dsl != nil && m != nil {
-		var mcpTools []*tool.Tool
+		var mcpTools []tool.Tool
 		// MCP tools injected by caller; extensible here
 		if a, err := AgentBuilder(dsl, spec.SkillDir, env, mcpTools); err == nil {
 			return a
@@ -375,7 +371,7 @@ func NewChatModelWithOverride(modelOverride string) (model.ChatModel, error) {
 	if modelOverride != "" {
 		modelName = modelOverride
 	}
-	cfg := model.OpenAIConfig{APIKey: key, Model: modelName}
+	cfg := model.OpenAIConfig{SecretAPIKey: model.NewSecretStr(key), Model: modelName}
 	if baseURL := os.Getenv("OPENAI_BASE_URL"); baseURL != "" {
 		cfg.BaseURL = baseURL
 	}

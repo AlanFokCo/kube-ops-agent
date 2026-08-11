@@ -3,7 +3,7 @@ package agent
 import (
 	"context"
 
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/model"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/model"
 
 	"github.com/alanfokco/kube-ops-agent-go/internal/plan"
 )

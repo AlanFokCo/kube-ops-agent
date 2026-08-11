@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	agentpkg "github.com/alanfokco/agentscope-go/pkg/agentscope/agent"
-	toolpkg "github.com/alanfokco/agentscope-go/pkg/agentscope/tool"
+	agentpkg "github.com/alanfokco/agentscope-go/v2/pkg/agentscope/agent"
+	toolpkg "github.com/alanfokco/agentscope-go/v2/pkg/agentscope/tool"
 
 	runtimepkg "github.com/alanfokco/kube-ops-agent-go/internal/runtime"
 )
@@ -1482,8 +1482,8 @@ func TestNewKubectlTool_NilLimiter(t *testing.T) {
 	if ktool == nil {
 		t.Fatal("expected non-nil kubectl tool")
 	}
-	if ktool.Name != "kubectl" {
-		t.Errorf("expected name 'kubectl', got %q", ktool.Name)
+	if ktool.Name() != "kubectl" {
+		t.Errorf("expected name 'kubectl', got %q", ktool.Name())
 	}
 }
 
@@ -1588,8 +1588,8 @@ func TestBuildToolkit_WithMCPTools(t *testing.T) {
 		},
 	}
 	env := runtimepkg.NewEnvironment(nil)
-	mcpTool := &toolpkg.Tool{Name: "kubectl-get", Description: "desc"}
-	tk := buildToolkit(dsl, "/tmp", env, []*toolpkg.Tool{mcpTool})
+	mcpTool := toolpkg.NewFunctionTool("kubectl-get", "desc", nil, func(ctx context.Context, input map[string]any) (any, error) { return nil, nil })
+	tk := buildToolkit(dsl, "/tmp", env, []toolpkg.Tool{mcpTool})
 	if tk == nil {
 		t.Fatal("expected non-nil toolkit")
 	}
@@ -1604,8 +1604,8 @@ func TestBuildToolkit_WithMCPTools_NoFilter(t *testing.T) {
 			// No MCPTools filter - should include all
 		},
 	}
-	mcpTool := &toolpkg.Tool{Name: "any-tool", Description: "desc"}
-	tk := buildToolkit(dsl, "/tmp", nil, []*toolpkg.Tool{mcpTool})
+	mcpTool := toolpkg.NewFunctionTool("any-tool", "desc", nil, func(ctx context.Context, input map[string]any) (any, error) { return nil, nil })
+	tk := buildToolkit(dsl, "/tmp", nil, []toolpkg.Tool{mcpTool})
 	if tk == nil {
 		t.Fatal("expected non-nil toolkit")
 	}

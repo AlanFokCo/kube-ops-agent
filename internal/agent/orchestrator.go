@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/message"
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/model"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/message"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/model"
 
 	"github.com/alanfokco/kube-ops-agent-go/internal/plan"
 )
@@ -73,14 +73,14 @@ The JSON schema:
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || resp.Msg == nil {
+	if resp == nil {
 		return nil, fmt.Errorf("orchestrator returned nil response")
 	}
-	text := resp.Msg.GetTextContent("")
-	if text == nil {
+	textStr := resp.GetTextContent()
+	if textStr == "" {
 		return nil, fmt.Errorf("orchestrator returned empty content")
 	}
-	planText := strings.TrimSpace(*text)
+	planText := strings.TrimSpace(textStr)
 	// Strip possible ```json wrapper
 	if strings.HasPrefix(planText, "```") {
 		planText = strings.TrimPrefix(planText, "```json")

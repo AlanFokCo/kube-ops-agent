@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/agent"
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/model"
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/tool"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/agent"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/model"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/tool"
 
 	"github.com/alanfokco/kube-ops-agent-go/internal/report"
 )
@@ -43,11 +43,8 @@ Return ONLY valid JSON for tool calls, then the final report.`, skillContent)
 	return agent.NewReActAgent("SummaryAgent", sysPrompt, m, tk, nil), nil
 }
 
-func newSaveReportTool(reportDir string) *tool.Tool {
-	return &tool.Tool{
-		Name:        "save_report",
-		Description: "Save the final Markdown report to disk. Args: content (string, required) - the full report Markdown.",
-		Execute: func(ctx context.Context, args map[string]any) (any, error) {
+func newSaveReportTool(reportDir string) tool.Tool {
+	return newRawTool("save_report", "Save the final Markdown report to disk. Args: content (string, required) - the full report Markdown.", func(ctx context.Context, args map[string]any) (any, error) {
 			raw, ok := args["content"]
 			if !ok {
 				return nil, fmt.Errorf("content is required")
@@ -68,20 +65,15 @@ func newSaveReportTool(reportDir string) *tool.Tool {
 				return nil, err
 			}
 			return map[string]any{"path": path, "saved": true}, nil
-		},
-	}
+	})
 }
 
-func newRegisterAgentSkillTool(skillDir string) *tool.Tool {
-	return &tool.Tool{
-		Name:        "register_agent_skill",
-		Description: "Get the summary agent skill instructions from the skill directory. Args: (none)",
-		Execute: func(ctx context.Context, args map[string]any) (any, error) {
+func newRegisterAgentSkillTool(skillDir string) tool.Tool {
+	return newRawTool("register_agent_skill", "Get the summary agent skill instructions from the skill directory. Args: (none)", func(ctx context.Context, args map[string]any) (any, error) {
 			content, err := RegisterAgentSkill(skillDir)
 			if err != nil {
 				return nil, err
 			}
 			return map[string]any{"skill_content": content, "skill_dir": skillDir}, nil
-		},
-	}
+	})
 }

@@ -8,7 +8,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/tool"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/tool"
 )
 
 // Tool represents an MCP tool.
@@ -263,9 +263,9 @@ func (r *Registry) ShutdownMCP() {
 	}
 }
 
-// CreateMCPToolFunction converts MCP tool to agentscope-go *tool.Tool for Agent Toolkit.
+// CreateMCPToolFunction converts MCP tool to agentscope-go tool.Tool for Agent Toolkit.
 // If Registry has runtime via InitializeMCP, actually calls MCP server.
-func (r *Registry) CreateMCPToolFunction(t *Tool) *tool.Tool {
+func (r *Registry) CreateMCPToolFunction(t *Tool) tool.Tool {
 	if t == nil {
 		return nil
 	}
@@ -274,27 +274,24 @@ func (r *Registry) CreateMCPToolFunction(t *Tool) *tool.Tool {
 		desc = "MCP tool: " + t.Name
 	}
 	reg := r
-	return &tool.Tool{
-		Name:        t.Name,
-		Description: desc,
-		Execute: func(ctx context.Context, args map[string]any) (any, error) {
-			reg.mu.RLock()
-			rt := reg.runtime
-			reg.mu.RUnlock()
-			if rt == nil {
-				return map[string]any{"error": "MCP runtime not initialized"}, fmt.Errorf("MCP tool %s: runtime not initialized", t.Name)
-			}
-			res, err := rt.CallTool(ctx, t.Name, args)
-			if err != nil {
-				return map[string]any{"error": err.Error()}, err
-			}
-			return map[string]any{"content": res.Content, "text": res.GetText()}, nil
-		},
-	}
+	toolName := t.Name
+	return newMCPRawTool(t.Name, desc, func(ctx context.Context, args map[string]any) (any, error) {
+		reg.mu.RLock()
+		rt := reg.runtime
+		reg.mu.RUnlock()
+		if rt == nil {
+			return map[string]any{"error": "MCP runtime not initialized"}, fmt.Errorf("MCP tool %s: runtime not initialized", toolName)
+		}
+		res, err := rt.CallTool(ctx, toolName, args)
+		if err != nil {
+			return map[string]any{"error": err.Error()}, err
+		}
+		return map[string]any{"content": res.Content, "text": res.GetText()}, nil
+	})
 }
 
 // CreateMCPToolFunctionStatic creates MCP tool statically (when no Registry).
-func CreateMCPToolFunction(t *Tool) *tool.Tool {
+func CreateMCPToolFunction(t *Tool) tool.Tool {
 	if t == nil {
 		return nil
 	}
@@ -302,22 +299,19 @@ func CreateMCPToolFunction(t *Tool) *tool.Tool {
 	if desc == "" {
 		desc = "MCP tool: " + t.Name
 	}
-	return &tool.Tool{
-		Name:        t.Name,
-		Description: desc,
-		Execute: func(ctx context.Context, args map[string]any) (any, error) {
-			return map[string]any{"error": "MCP runtime not initialized"}, fmt.Errorf("MCP tool %s: runtime not initialized", t.Name)
-		},
-	}
+	toolName := t.Name
+	return newMCPRawTool(t.Name, desc, func(ctx context.Context, args map[string]any) (any, error) {
+		return map[string]any{"error": "MCP runtime not initialized"}, fmt.Errorf("MCP tool %s: runtime not initialized", toolName)
+	})
 }
 
 // MCPToolsAsAgentTools converts all MCP tools in Registry to agentscope-go tool list.
-func (r *Registry) MCPToolsAsAgentTools() []*tool.Tool {
+func (r *Registry) MCPToolsAsAgentTools() []tool.Tool {
 	r.mu.RLock()
 	tools := r.ListTools()
 	r.mu.RUnlock()
 
-	out := make([]*tool.Tool, 0, len(tools))
+	out := make([]tool.Tool, 0, len(tools))
 	for i := range tools {
 		if t := r.CreateMCPToolFunction(&tools[i]); t != nil {
 			out = append(out, t)

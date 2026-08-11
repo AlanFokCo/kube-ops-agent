@@ -3,7 +3,7 @@ package agent
 import (
 	"context"
 
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/model"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/model"
 )
 
 // SelfDrivenWorker is a self-driven Worker based on ThinkingAgent.

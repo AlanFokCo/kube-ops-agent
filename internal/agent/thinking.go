@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/message"
-	"github.com/alanfokco/agentscope-go/pkg/agentscope/model"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/message"
+	"github.com/alanfokco/agentscope-go/v2/pkg/agentscope/model"
 )
 
 // ThinkingConfig controls ThinkingAgent recursion depth and iteration count.
@@ -187,15 +187,15 @@ Return ONLY a compact JSON object:
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || resp.Msg == nil {
+	if resp == nil {
 		return nil, fmt.Errorf("analysis returned nil response")
 	}
-	text := resp.Msg.GetTextContent("")
-	if text == nil {
+	textStr := resp.GetTextContent()
+	if textStr == "" {
 		return nil, fmt.Errorf("analysis returned empty content")
 	}
 	var ar analysisResult
-	if err := json.Unmarshal([]byte(*text), &ar); err != nil {
+	if err := json.Unmarshal([]byte(textStr), &ar); err != nil {
 		return nil, fmt.Errorf("parse analysis json: %w", err)
 	}
 	return &ar, nil
@@ -242,19 +242,19 @@ Return ONLY a valid JSON object with this shape:
 	if err != nil {
 		return "", err
 	}
-	if resp == nil || resp.Msg == nil {
+	if resp == nil {
 		return "", fmt.Errorf("plan returned nil response")
 	}
-	text := resp.Msg.GetTextContent("")
-	if text == nil {
+	textStr := resp.GetTextContent()
+	if textStr == "" {
 		return "", fmt.Errorf("plan returned empty content")
 	}
 	// No strict JSON structure validation; any valid JSON is accepted.
 	var tmp any
-	if err := json.Unmarshal([]byte(*text), &tmp); err != nil {
+	if err := json.Unmarshal([]byte(textStr), &tmp); err != nil {
 		return "", fmt.Errorf("plan is not valid json: %w", err)
 	}
-	return *text, nil
+	return textStr, nil
 }
 
 // executeDirect uses ReActAgent + tools to execute one concrete action.
@@ -305,15 +305,15 @@ Return ONLY the JSON array.`, t.Name, task, mustJSON(contextData), t.Config.Cons
 	if err != nil {
 		return nil, err
 	}
-	if resp == nil || resp.Msg == nil {
+	if resp == nil {
 		return nil, fmt.Errorf("model returned nil response")
 	}
-	text := resp.Msg.GetTextContent("")
-	if text == nil {
+	textStr2 := resp.GetTextContent()
+	if textStr2 == "" {
 		return nil, fmt.Errorf("empty command plan from model")
 	}
 
-	planText := strings.TrimSpace(*text)
+	planText := strings.TrimSpace(textStr2)
 	var cmds []commandSpec
 	if err := json.Unmarshal([]byte(planText), &cmds); err != nil {
 		return nil, fmt.Errorf("invalid command JSON: %w", err)
@@ -410,13 +410,14 @@ Produce a concise, well-structured Markdown report for SREs.`
 	if err != nil {
 		return nil, err
 	}
-	if reportResp == nil || reportResp.Msg == nil {
+	if reportResp == nil {
 		return nil, fmt.Errorf("empty report response from model")
 	}
-	if txt := reportResp.Msg.GetTextContent(""); txt != nil {
-		return *txt, nil
+	reportText := reportResp.GetTextContent()
+	if reportText != "" {
+		return reportText, nil
 	}
-	return reportResp.Msg.Content, nil
+	return "", nil
 }
 
 func mustJSON(v any) string {
