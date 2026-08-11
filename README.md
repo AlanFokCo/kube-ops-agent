@@ -20,6 +20,7 @@ AI Agent-based Kubernetes cluster inspection, health reporting, and intelligent 
 ## Prerequisites
 
 - Go 1.25+
+- agentscope-go v2.0.7 (auto-fetched by go mod)
 - Accessible Kubernetes cluster (`kubectl` configured)
 - OpenAI API Key (for LLM)
 
