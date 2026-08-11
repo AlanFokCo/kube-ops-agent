@@ -300,11 +300,13 @@ func newKubectlTool(limiter *runtimepkg.RateLimiter) tool.Tool {
 
 // newWorkerToolkit builds Worker Toolkit: kubectl + agentscope-go v1.0.1 built-in execute_shell_command / view_text_file.
 func newWorkerToolkit(limiter *runtimepkg.RateLimiter) *tool.Toolkit {
-	return tool.NewToolkit(
+	tk := tool.NewToolkit(
 		newKubectlTool(limiter),
 		tool.ExecuteShellCommandTool(),
 		tool.ViewTextFileTool(),
 	)
+	tk.AddGroup("k8s-cluster", NewK8sClusterTools()...)
+	return tk
 }
 
 // buildWorkerAgent builds from DSL first, otherwise uses default fixed build.

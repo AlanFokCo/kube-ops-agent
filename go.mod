@@ -16,7 +16,7 @@ require (
 )
 
 require (
-	github.com/alanfokco/agentscope-go/v2 v2.0.6
+	github.com/alanfokco/agentscope-go/v2 v2.0.7
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
