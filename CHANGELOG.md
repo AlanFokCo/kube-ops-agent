@@ -6,6 +6,21 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Added
+- Upgraded to agentscope-go v2.0.7 (from v1.0.1)
+- Output guardrails: auto-redact AWS keys, GitHub tokens, Bearer tokens from model output
+- Spend cap: K8SOPS_MAX_COST_USD env for per-session budget enforcement
+- LLM circuit breaker (threshold=5, 30s reset) + rate limiter (10 req/s)
+- Audit logging: structured JSON-lines at K8SOPS_AUDIT_DIR
+- K8s cluster tools: kubectl_get (15 resource types, secrets blocked) + kubectl_logs
+- SecretStr for API key storage (never leaks in logs)
+- CNY exchange rate display in cost tracking
+
+### Changed
+- All import paths updated to agentscope-go/v2 module path
+- Worker toolkit now includes framework K8s tools alongside custom kubectl tool
+
+
 ## [1.0.0] - 2025-03-16
 
 ### Added

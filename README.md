@@ -3,7 +3,7 @@
 [![CI](https://github.com/alanfokco/kube-ops-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/alanfokco/kube-ops-agent/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/alanfokco/kube-ops-agent/branch/main/graph/badge.svg)](https://codecov.io/gh/alanfokco/kube-ops-agent)
 
-AI Agent-based Kubernetes cluster inspection, health reporting, and intelligent Q&A. Supports multi-agent collaboration, **LLM self-planning**, scheduled inspection, MCP integration, and HTTP API for cluster state queries and conversational ops.
+AI-powered Kubernetes cluster operations agent built on [agentscope-go v2](https://github.com/AlanFokCo/agentscope-go). Provides multi-agent inspection, LLM self-planning, scheduled health checks, conversational ops, and production safety (secret redaction, spend caps, audit logging, circuit breaking).
 
 📖 [Documentation](docs/README.md) - Architecture, developer guide, usage, LLM planning and Workflow config
 
@@ -16,6 +16,15 @@ AI Agent-based Kubernetes cluster inspection, health reporting, and intelligent 
 - **Chat Assistant**: Natural language Q&A via `/chat`, read-only kubectl queries
 - **MCP Integration**: Model Context Protocol for external tools
 - **Health Reports**: Auto-generated Markdown cluster health reports with history
+
+### Safety & Production (powered by agentscope-go v2)
+- **Output Guardrails**: Auto-redacts AWS keys, GitHub tokens, Bearer tokens from model output
+- **Spend Cap**: Per-session USD budget limit via `K8SOPS_MAX_COST_USD` env with CNY display
+- **LLM Circuit Breaker**: Auto-failover on repeated model failures (threshold=5, 30s reset)
+- **LLM Rate Limiter**: Prevents API throttling (10 req/s, burst 20)
+- **Audit Logging**: Structured JSON-lines audit trail of tool executions
+- **K8s Cluster Tools**: `kubectl_get` (15 resource types, secrets blocked) + `kubectl_logs`
+- **Secret Protection**: API keys stored as `SecretStr` — never leak in logs
 
 ## Prerequisites
 
@@ -77,6 +86,8 @@ export K8SOPS_SKILLS_DIR="kubernetes-ops-agent/skills"
 export K8SOPS_REPORT_DIR="kubernetes-ops-agent/report"
 export K8SOPS_WORKFLOW=""                       # Empty=LLM planning; path=Workflow
 export K8SOPS_MCP_CONFIG="./config/mcp_servers.yaml"   # Optional
+export K8SOPS_MAX_COST_USD="5.0"                       # Optional: per-session spend cap
+export K8SOPS_AUDIT_DIR="/var/log/kube-ops-agent/audit" # Optional: audit log dir
 ```
 
 ### Run

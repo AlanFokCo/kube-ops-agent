@@ -143,3 +143,19 @@ Skills directory (skills/)
 | **Planning** | `--workflow` or LLM default | See [Usage Guide](usage-guide.md) |
 | **MCP** | `K8SOPS_MCP_CONFIG` | Mount external tools to Agent Toolkit |
 | **LLM** | `OPENAI_MODEL` | Switch model for planning and execution |
+
+## agentscope-go v2 Integration Layer (2026-08)
+
+The project integrates agentscope-go v2.0.7 as its AI agent framework, leveraging:
+
+| Component | agentscope-go v2 Feature | Purpose |
+|-----------|--------------------------|---------|
+| LLM Calls | `model.ChatModel` + `resilience.Wrap` | Circuit breaker + rate limiter for API stability |
+| Secret Safety | `middleware.GuardrailMiddleware` | Auto-redacts leaked secrets from model output |
+| Cost Control | `middleware.CostTrackerMiddleware` | Per-session USD spend cap with CNY display |
+| Audit Trail | `audit.FileLogger` | JSON-lines log of every tool execution |
+| K8s Queries | `workspace.NewKubectlGetTool/LogTool` | Safe read-only cluster tools (secrets blocked) |
+| API Keys | `model.SecretStr` | Redaction in logs/serialization |
+
+These are **additive** to the existing architecture — no existing layers were removed or modified.
+The K8s-specific rate limiting (APF-aware) and Operations Manager remain as domain-specific code.
